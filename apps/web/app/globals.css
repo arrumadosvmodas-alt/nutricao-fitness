@@ -286,7 +286,7 @@ h2 {
   display: grid;
   grid-template-columns: 2fr repeat(4, minmax(110px, 1fr));
   gap: 12px;
-  align-items: end;
+  align-items: flex-end;
   margin-top: 14px;
 }
 
@@ -414,7 +414,7 @@ h2 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
   gap: 18px;
-  align-items: end;
+  align-items: flex-end;
   margin-top: 24px;
 }
 
@@ -459,7 +459,7 @@ h2 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
-  align-items: end;
+  align-items: flex-end;
 }
 
 .macro small {
@@ -479,7 +479,7 @@ h2 {
   display: grid;
   grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
   gap: 16px;
-  align-items: end;
+  align-items: flex-end;
   margin-top: 18px;
 }
 
@@ -586,5 +586,79 @@ h2 {
 
   .food-base-actions {
     justify-content: flex-start;
+  }
+}
+.report-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.report-summary > div {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 14px;
+}
+
+.report-summary span,
+.report-day small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.report-summary strong {
+  display: block;
+  font-size: 26px;
+  margin-top: 4px;
+}
+
+.report-summary small {
+  color: var(--muted);
+}
+
+.report-bars {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0 12px;
+  align-items: flex-end;
+}
+
+.report-day {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  text-align: center;
+}
+
+.report-date,
+.report-kcal {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.report-bar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 120px;
+  border-radius: 12px;
+  background: #f5efe5;
+  overflow: hidden;
+}
+
+.report-bar span {
+  display: block;
+  width: 100%;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(180deg, var(--green), #8ac7a1);
+}
+
+@media (max-width: 760px) {
+  .report-summary,
+  .report-bars {
+    grid-template-columns: 1fr 1fr;
   }
 }

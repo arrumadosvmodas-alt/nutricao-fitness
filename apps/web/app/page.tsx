@@ -38,6 +38,7 @@ type FoodEntry = {
 type WaterEntry = { id: string; amountMl: number };
 type ExerciseEntry = { id: string; name: string; minutes: number; calories: number };
 type WeightEntry = { id: string; weightKg: number; date: string };
+type ReportDay = { date: string; calories: number; protein: number; carbs: number; fat: number; waterMl: number; exercise: number };
 type FoodSource = "open_food_facts" | "base_comum" | "user" | "supabase";
 type FoodOption = { id: string; ownerId?: string | null; name: string; brand: string | null; calories: number; protein: number; carbs: number; fat: number; unit: string; servingSize?: number; per100g?: boolean; source?: FoodSource };
 type ExternalFood = { code?: string; name: string; brand?: string | null; calories_kcal_100g: number; protein_g_100g: number; carbs_g_100g: number; fat_g_100g: number; source?: FoodSource };
@@ -104,6 +105,19 @@ const goalAdjustments = {
 } as const;
 
 const defaultTargets: GoalTargets = { calories: 2100, protein: 126, carbs: 240, fat: 58 };
+function getRecentDates(endDate: string, count = 7) {
+  const end = new Date(`${endDate}T00:00:00`);
+  return Array.from({ length: count }, (_, index) => {
+    const day = new Date(end);
+    day.setDate(end.getDate() - (count - 1 - index));
+    return day.toISOString().slice(0, 10);
+  });
+}
+
+function shortDateLabel(date: string) {
+  const [, month, day] = date.split("-");
+  return `${day}/${month}`;
+}
 
 const protocolHours: Record<Protocol, readonly [number, number]> = {
   "12:12": [12, 12],
@@ -252,6 +266,7 @@ export default function Home() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [authForm, setAuthForm] = useState({ email: "", password: "" });
   const [foodOptions, setFoodOptions] = useState<FoodOption[]>([]);
+  const [reportDays, setReportDays] = useState<ReportDay[]>([]);
   const [externalFoodQuery, setExternalFoodQuery] = useState("");
   const [externalFoods, setExternalFoods] = useState<ExternalFood[]>([]);
   const [selectedPer100gFood, setSelectedPer100gFood] = useState<FoodOption | null>(null);
@@ -308,7 +323,9 @@ export default function Home() {
     setMessage("Sincronizando com Supabase...");
     await ensureProfile(supabase, session);
 
-    const [profile, foods, diary, water, exercise, weight, goals, fasting] = await Promise.all([
+    const reportDates = getRecentDates(selectedDate);
+    const reportStart = reportDates[0];
+    const [profile, foods, diary, water, exercise, weight, goals, fasting, reportDiary, reportWater, reportExercise] = await Promise.all([
       supabase.from("profiles").select("full_name,birth_date,sex,height_cm,current_weight_kg,target_weight_kg,activity_level,goal").eq("id", session.user.id).maybeSingle(),
       supabase.from("foods").select("id,owner_id,name,brand,source,calories_kcal,protein_g,carbs_g,fat_g,serving_unit,serving_size").order("name").limit(100),
       supabase.from("diary_entries").select("id,meal,food_name_snapshot,quantity,unit,calories_kcal,protein_g,carbs_g,fat_g").eq("diary_date", selectedDate).order("created_at"),
@@ -316,7 +333,10 @@ export default function Home() {
       supabase.from("exercise_entries").select("id,name,duration_minutes,calories_kcal").eq("diary_date", selectedDate).order("created_at"),
       supabase.from("weight_entries").select("id,weight_kg,measured_on").order("measured_on", { ascending: true }).limit(30),
       supabase.from("nutrition_goals").select("calories_kcal,protein_g,carbs_g,fat_g").order("created_at", { ascending: false }).limit(1),
-      supabase.from("fasting_plans").select("id,protocol,last_meal_time,next_meal_time,hydration_target_ml,break_fast_min_kcal,break_fast_max_kcal,protein_min_g,active").eq("active", true).order("created_at", { ascending: false }).limit(1)
+      supabase.from("fasting_plans").select("id,protocol,last_meal_time,next_meal_time,hydration_target_ml,break_fast_min_kcal,break_fast_max_kcal,protein_min_g,active").eq("active", true).order("created_at", { ascending: false }).limit(1),
+      supabase.from("diary_entries").select("diary_date,calories_kcal,protein_g,carbs_g,fat_g").gte("diary_date", reportStart).lte("diary_date", selectedDate),
+      supabase.from("water_entries").select("diary_date,amount_ml").gte("diary_date", reportStart).lte("diary_date", selectedDate),
+      supabase.from("exercise_entries").select("diary_date,calories_kcal").gte("diary_date", reportStart).lte("diary_date", selectedDate)
     ]);
 
     const profileData = profile.data;
@@ -379,6 +399,22 @@ export default function Home() {
       } : current.fastingPlan
     }));
 
+
+    const weeklyReport = reportDates.map((date) => {
+      const diaryRows = reportDiary.data?.filter((entry) => entry.diary_date === date) ?? [];
+      const waterRows = reportWater.data?.filter((entry) => entry.diary_date === date) ?? [];
+      const exerciseRows = reportExercise.data?.filter((entry) => entry.diary_date === date) ?? [];
+      return {
+        date,
+        calories: diaryRows.reduce((sum, entry) => sum + Number(entry.calories_kcal ?? 0), 0),
+        protein: Math.round(diaryRows.reduce((sum, entry) => sum + Number(entry.protein_g ?? 0), 0) * 10) / 10,
+        carbs: Math.round(diaryRows.reduce((sum, entry) => sum + Number(entry.carbs_g ?? 0), 0) * 10) / 10,
+        fat: Math.round(diaryRows.reduce((sum, entry) => sum + Number(entry.fat_g ?? 0), 0) * 10) / 10,
+        waterMl: waterRows.reduce((sum, entry) => sum + Number(entry.amount_ml ?? 0), 0),
+        exercise: exerciseRows.reduce((sum, entry) => sum + Number(entry.calories_kcal ?? 0), 0)
+      };
+    });
+    setReportDays(weeklyReport);
     if (goals.data?.[0]) {
       setGoalTargets({
         calories: Number(goals.data[0].calories_kcal),
@@ -403,6 +439,25 @@ export default function Home() {
   const remaining = state.calorieTarget - totals.consumed + totals.exercise;
   const isCloud = Boolean(supabase && session);
   const myFoodOptions = foodOptions.filter((item) => item.ownerId === session?.user.id);
+  const reportSource = reportDays.length ? reportDays : [{ date: selectedDate, calories: totals.consumed, protein: totals.protein, carbs: totals.carbs, fat: totals.fat, waterMl: totals.water, exercise: totals.exercise }];
+  const reportTotals = reportSource.reduce((acc, day) => ({
+    calories: acc.calories + day.calories,
+    protein: acc.protein + day.protein,
+    carbs: acc.carbs + day.carbs,
+    fat: acc.fat + day.fat,
+    waterMl: acc.waterMl + day.waterMl,
+    exercise: acc.exercise + day.exercise,
+    completeDays: acc.completeDays + (day.calories > 0 ? 1 : 0),
+    adherentDays: acc.adherentDays + (day.calories >= state.calorieTarget * 0.8 && day.calories <= state.calorieTarget * 1.1 ? 1 : 0)
+  }), { calories: 0, protein: 0, carbs: 0, fat: 0, waterMl: 0, exercise: 0, completeDays: 0, adherentDays: 0 });
+  const reportCount = Math.max(reportSource.length, 1);
+  const reportAverageCalories = Math.round(reportTotals.calories / reportCount);
+  const reportAverageWater = Math.round(reportTotals.waterMl / reportCount);
+  const reportAdherence = Math.round((reportTotals.adherentDays / reportCount) * 100);
+  const maxReportCalories = Math.max(...reportSource.map((day) => day.calories), state.calorieTarget, 1);
+  const latestWeight = state.weightEntries.at(-1);
+  const previousWeight = state.weightEntries.length > 1 ? state.weightEntries.at(-2) : undefined;
+  const weightDelta = latestWeight && previousWeight ? Math.round((latestWeight.weightKg - previousWeight.weightKg) * 10) / 10 : null;
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -829,6 +884,8 @@ export default function Home() {
 
           <article className="card span-5"><div className="card-title">Macros</div><div className="macro-grid"><div className="macro"><span>Proteína</span><strong style={{ color: "var(--green)" }}>{totals.protein}g</strong><small>meta {goalTargets.protein}g</small></div><div className="macro"><span>Carboidratos</span><strong style={{ color: "var(--blue)" }}>{totals.carbs}g</strong><small>meta {goalTargets.carbs}g</small></div><div className="macro"><span>Gorduras</span><strong style={{ color: "var(--coral)" }}>{totals.fat}g</strong><small>meta {goalTargets.fat}g</small></div></div><label className="field solo">Meta calórica diária<input type="number" value={state.calorieTarget} onChange={(event) => setState((current) => ({ ...current, calorieTarget: Number(event.target.value) || 0, fastingPlan: { ...current.fastingPlan, calorieTarget: Number(event.target.value) || 0 } }))} /></label></article>
 
+
+          <article className="card span-12" id="reports"><div className="card-title"><BarChart3 size={16} /> Histórico e relatórios</div><div className="report-summary"><div><span>Média kcal</span><strong>{reportAverageCalories}</strong><small>meta {state.calorieTarget} kcal</small></div><div><span>Aderência</span><strong>{reportAdherence}%</strong><small>{reportTotals.adherentDays}/{reportCount} dias dentro da faixa</small></div><div><span>Água média</span><strong>{(reportAverageWater / 1000).toFixed(1)} L</strong><small>por dia</small></div><div><span>Peso</span><strong>{latestWeight ? `${latestWeight.weightKg} kg` : "-"}</strong><small>{weightDelta === null ? "sem comparação" : `${weightDelta > 0 ? "+" : ""}${weightDelta} kg vs. anterior`}</small></div></div><div className="report-bars">{reportSource.map((day) => <div className="report-day" key={day.date}><div className="report-date">{shortDateLabel(day.date)}</div><div className="report-bar"><span style={{ height: `${Math.max(4, Math.round((day.calories / maxReportCalories) * 100))}%` }} /></div><div className="report-kcal">{Math.round(day.calories)} kcal</div><small>P {Math.round(day.protein)}g · C {Math.round(day.carbs)}g · G {Math.round(day.fat)}g</small></div>)}</div><p className="muted compact">Resumo educativo dos últimos {reportCount} dia(s). Dias sem registro aparecem zerados; quanto mais completo o diário, melhor o relatório.</p></article>
           <article className="card span-12" id="food"><div className="card-title">Registrar alimento</div><form className="external-food-search" onSubmit={searchExternalFoods}><input value={externalFoodQuery} onChange={(event) => setExternalFoodQuery(event.target.value)} placeholder="Buscar na base ampliada: iogurte, arroz, pão integral..." /><button className="secondary-action" type="submit"><Search size={18} /> Buscar</button></form>{externalFoods.length ? <div className="external-results">{externalFoods.map((item) => <button className="external-result" type="button" key={`${item.code}-${item.name}`} onClick={() => chooseExternalFood(item)}><div className="result-heading"><strong>{item.name}</strong><em>{foodSourceLabel(item.source)}</em></div><span>{item.brand || foodSourceLabel(item.source)} · {Math.round(item.calories_kcal_100g)} kcal/100g · P {item.protein_g_100g}g · C {item.carbs_g_100g}g · G {item.fat_g_100g}g</span></button>)}</div> : null}{foodOptions.length ? <label className="field solo">Alimentos do Supabase<select defaultValue="" onChange={(event) => chooseFoodOption(event.target.value)}><option value="" disabled>Selecionar alimento da base</option>{foodOptions.map((item) => <option key={item.id} value={item.id}>{item.name}{item.brand ? ` - ${item.brand}` : ""} · {foodSourceLabel(item.source)}</option>)}</select></label> : null}<form className="form-grid" onSubmit={addFood}><label className="field wide">Alimento<input value={foodForm.name} onChange={(event) => { setSelectedPer100gFood(null); setFoodForm({ ...foodForm, name: event.target.value }); }} placeholder="Ex.: arroz, feijão e frango" /></label><label className="field">Refeição<select value={foodForm.meal} onChange={(event) => setFoodForm({ ...foodForm, meal: event.target.value as Meal })}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="field">Qtd.<input type="number" value={foodForm.quantity} onChange={(event) => { setFoodForm({ ...foodForm, quantity: event.target.value }); if (selectedPer100gFood) applyPer100gFood(selectedPer100gFood, Number(event.target.value)); }} /></label><label className="field">Unidade<input value={foodForm.unit} onChange={(event) => { setSelectedPer100gFood(null); setFoodForm({ ...foodForm, unit: event.target.value }); }} /></label><label className="field">Kcal<input type="number" value={foodForm.calories} onChange={(event) => setFoodForm({ ...foodForm, calories: event.target.value })} /></label><label className="field">Proteína g<input type="number" value={foodForm.protein} onChange={(event) => setFoodForm({ ...foodForm, protein: event.target.value })} /></label><label className="field">Carbo. g<input type="number" value={foodForm.carbs} onChange={(event) => setFoodForm({ ...foodForm, carbs: event.target.value })} /></label><label className="field">Gord. g<input type="number" value={foodForm.fat} onChange={(event) => setFoodForm({ ...foodForm, fat: event.target.value })} /></label><button className="primary-action" type="submit"><Plus size={18} /> Adicionar</button><button className="secondary-action" type="button" onClick={saveCustomFood}>Salvar na base</button></form></article>
 
 
