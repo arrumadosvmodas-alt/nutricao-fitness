@@ -1693,3 +1693,28 @@ button:disabled {
     width: 100%;
   }
 }
+/* Admin foods panel */
+.admin-food-form {
+  margin-top: 14px;
+}
+
+.admin-summary {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  border: 1px solid #cfe3ff;
+  border-radius: 999px;
+  background: #eef7ff;
+  color: #0f3f7b;
+  margin-top: 14px;
+  padding: 8px 12px;
+}
+
+.admin-summary strong {
+  font-size: 22px;
+}
+
+.admin-summary span {
+  color: #335f91;
+  font-weight: 800;
+}
