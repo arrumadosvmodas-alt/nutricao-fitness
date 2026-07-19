@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Nutrição & Fitness",
+    "slug": "nutricao-fitness",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "nutricaofitness",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#f4f8fc"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nutricaofitness.app"
+    },
+    "android": {
+      "package": "com.nutricaofitness.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0066ee"
+      }
+    },
+    "plugins": [
+      [
+        "expo-barcode-scanner",
+        {
+          "cameraPermission": "Permita acessar a câmera para escanear códigos de barras dos alimentos."
+        }
+      ]
+    ]
+  }
+}
