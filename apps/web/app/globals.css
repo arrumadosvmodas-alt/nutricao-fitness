@@ -811,3 +811,16 @@ select {
   background: #fff6e6;
   border-color: #efd8ac;
 }
+.saved-meal-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(180px, .7fr) auto auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 14px;
+}
+
+@media (max-width: 760px) {
+  .saved-meal-form {
+    grid-template-columns: 1fr;
+  }
+}
