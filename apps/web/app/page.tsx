@@ -450,6 +450,46 @@ export default function Home() {
     setMessage(`Metas salvas: ${targets.calories} kcal, ${targets.protein}g proteína, ${targets.carbs}g carboidratos e ${targets.fat}g gorduras.`);
   }
 
+
+  async function saveCustomFood() {
+    if (!isCloud) {
+      setMessage("Entre com uma conta para salvar alimentos personalizados.");
+      return;
+    }
+    if (!foodForm.name.trim() || !foodForm.calories) {
+      setMessage("Preencha nome e calorias antes de salvar o alimento.");
+      return;
+    }
+
+    const { data, error } = await supabase!.from("foods").insert({
+      owner_id: session!.user.id,
+      name: foodForm.name.trim(),
+      source: "user",
+      region: "BR",
+      verified: false,
+      serving_size: Number(foodForm.quantity) || 1,
+      serving_unit: foodForm.unit.trim() || "porção",
+      calories_kcal: Number(foodForm.calories) || 0,
+      protein_g: Number(foodForm.protein) || 0,
+      carbs_g: Number(foodForm.carbs) || 0,
+      fat_g: Number(foodForm.fat) || 0
+    }).select("id,name,brand,calories_kcal,protein_g,carbs_g,fat_g,serving_unit").single();
+
+    if (error) return setMessage(error.message);
+    if (data) {
+      setFoodOptions((current) => [...current, {
+        id: data.id,
+        name: data.name,
+        brand: data.brand,
+        calories: Number(data.calories_kcal),
+        protein: Number(data.protein_g),
+        carbs: Number(data.carbs_g),
+        fat: Number(data.fat_g),
+        unit: data.serving_unit
+      }].sort((a, b) => a.name.localeCompare(b.name)));
+    }
+    setMessage("Alimento salvo na sua base pessoal.");
+  }
   async function addFood(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!foodForm.name.trim() || !foodForm.calories) return;
@@ -644,10 +684,10 @@ export default function Home() {
 
           <article className="card span-5"><div className="card-title">Macros</div><div className="macro-grid"><div className="macro"><span>Proteína</span><strong style={{ color: "var(--green)" }}>{totals.protein}g</strong><small>meta {goalTargets.protein}g</small></div><div className="macro"><span>Carboidratos</span><strong style={{ color: "var(--blue)" }}>{totals.carbs}g</strong><small>meta {goalTargets.carbs}g</small></div><div className="macro"><span>Gorduras</span><strong style={{ color: "var(--coral)" }}>{totals.fat}g</strong><small>meta {goalTargets.fat}g</small></div></div><label className="field solo">Meta calórica diária<input type="number" value={state.calorieTarget} onChange={(event) => setState((current) => ({ ...current, calorieTarget: Number(event.target.value) || 0, fastingPlan: { ...current.fastingPlan, calorieTarget: Number(event.target.value) || 0 } }))} /></label></article>
 
-          <article className="card span-12" id="food"><div className="card-title">Registrar alimento</div>{foodOptions.length ? <label className="field solo">Alimentos do Supabase<select defaultValue="" onChange={(event) => chooseFoodOption(event.target.value)}><option value="" disabled>Selecionar alimento da base</option>{foodOptions.map((item) => <option key={item.id} value={item.id}>{item.name}{item.brand ? ` - ${item.brand}` : ""}</option>)}</select></label> : null}<form className="form-grid" onSubmit={addFood}><label className="field wide">Alimento<input value={foodForm.name} onChange={(event) => setFoodForm({ ...foodForm, name: event.target.value })} placeholder="Ex.: arroz, feijão e frango" /></label><label className="field">Refeição<select value={foodForm.meal} onChange={(event) => setFoodForm({ ...foodForm, meal: event.target.value as Meal })}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="field">Qtd.<input type="number" value={foodForm.quantity} onChange={(event) => setFoodForm({ ...foodForm, quantity: event.target.value })} /></label><label className="field">Unidade<input value={foodForm.unit} onChange={(event) => setFoodForm({ ...foodForm, unit: event.target.value })} /></label><label className="field">Kcal<input type="number" value={foodForm.calories} onChange={(event) => setFoodForm({ ...foodForm, calories: event.target.value })} /></label><label className="field">Proteína g<input type="number" value={foodForm.protein} onChange={(event) => setFoodForm({ ...foodForm, protein: event.target.value })} /></label><label className="field">Carbo. g<input type="number" value={foodForm.carbs} onChange={(event) => setFoodForm({ ...foodForm, carbs: event.target.value })} /></label><label className="field">Gord. g<input type="number" value={foodForm.fat} onChange={(event) => setFoodForm({ ...foodForm, fat: event.target.value })} /></label><button className="primary-action" type="submit"><Plus size={18} /> Adicionar</button></form></article>
+          <article className="card span-12" id="food"><div className="card-title">Registrar alimento</div>{foodOptions.length ? <label className="field solo">Alimentos do Supabase<select defaultValue="" onChange={(event) => chooseFoodOption(event.target.value)}><option value="" disabled>Selecionar alimento da base</option>{foodOptions.map((item) => <option key={item.id} value={item.id}>{item.name}{item.brand ? ` - ${item.brand}` : ""}</option>)}</select></label> : null}<form className="form-grid" onSubmit={addFood}><label className="field wide">Alimento<input value={foodForm.name} onChange={(event) => setFoodForm({ ...foodForm, name: event.target.value })} placeholder="Ex.: arroz, feijão e frango" /></label><label className="field">Refeição<select value={foodForm.meal} onChange={(event) => setFoodForm({ ...foodForm, meal: event.target.value as Meal })}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="field">Qtd.<input type="number" value={foodForm.quantity} onChange={(event) => setFoodForm({ ...foodForm, quantity: event.target.value })} /></label><label className="field">Unidade<input value={foodForm.unit} onChange={(event) => setFoodForm({ ...foodForm, unit: event.target.value })} /></label><label className="field">Kcal<input type="number" value={foodForm.calories} onChange={(event) => setFoodForm({ ...foodForm, calories: event.target.value })} /></label><label className="field">Proteína g<input type="number" value={foodForm.protein} onChange={(event) => setFoodForm({ ...foodForm, protein: event.target.value })} /></label><label className="field">Carbo. g<input type="number" value={foodForm.carbs} onChange={(event) => setFoodForm({ ...foodForm, carbs: event.target.value })} /></label><label className="field">Gord. g<input type="number" value={foodForm.fat} onChange={(event) => setFoodForm({ ...foodForm, fat: event.target.value })} /></label><button className="primary-action" type="submit"><Plus size={18} /> Adicionar</button><button className="secondary-action" type="button" onClick={saveCustomFood}>Salvar na base</button></form></article>
 
           <article className="card span-4"><div className="card-title"><Droplets size={16} /> Água</div><form className="inline-form" onSubmit={addWater}><input type="number" value={waterAmount} onChange={(event) => setWaterAmount(event.target.value)} /><button className="primary-action" type="submit">ml</button></form></article>
-          <article className="card span-4"><div className="card-title"><Dumbbell size={16} /> Exercício</div><form className="stack-form" onSubmit={addExercise}><input value={exerciseForm.name} onChange={(event) => setExerciseForm({ ...exerciseForm, name: event.target.value })} placeholder="Ex.: musculação" /><div className="two-cols"><input type="number" value={exerciseForm.minutes} onChange={(event) => setExerciseForm({ ...exerciseForm, minutes: event.target.value })} placeholder="min" /><input type="number" value={exerciseForm.calories} onChange={(event) => setExerciseForm({ ...exerciseForm, calories: event.target.value })} placeholder="kcal" /></div><button className="primary-action" type="submit"><Plus size={18} /> Adicionar</button></form></article>
+          <article className="card span-4"><div className="card-title"><Dumbbell size={16} /> Exercício</div><form className="stack-form" onSubmit={addExercise}><input value={exerciseForm.name} onChange={(event) => setExerciseForm({ ...exerciseForm, name: event.target.value })} placeholder="Ex.: musculação" /><div className="two-cols"><input type="number" value={exerciseForm.minutes} onChange={(event) => setExerciseForm({ ...exerciseForm, minutes: event.target.value })} placeholder="min" /><input type="number" value={exerciseForm.calories} onChange={(event) => setExerciseForm({ ...exerciseForm, calories: event.target.value })} placeholder="kcal" /></div><button className="primary-action" type="submit"><Plus size={18} /> Adicionar</button><button className="secondary-action" type="button" onClick={saveCustomFood}>Salvar na base</button></form></article>
           <article className="card span-4" id="progress"><div className="card-title"><Scale size={16} /> Peso</div><form className="inline-form" onSubmit={addWeight}><input type="number" step="0.1" value={weightForm} onChange={(event) => setWeightForm(event.target.value)} placeholder="kg" /><button className="primary-action" type="submit">Salvar</button></form><p className="muted">Na data: {state.weightEntries.find((entry) => entry.date === selectedDate)?.weightKg ?? "-"} kg · Último: {state.weightEntries.at(-1)?.weightKg ?? "-"} kg</p></article>
 
           <article className="card span-12 fasting-card" id="fasting"><div className="fasting-header"><div><div className="card-title">Plano de jejum intermitente</div><h2>Protocolo {state.fastingPlan.protocol}: última refeição {state.fastingPlan.lastMeal}, próxima {fastingGuidance.nextMeal}</h2></div><span className="fasting-pill"><Clock3 size={16} /> {fastingGuidance.fastingHours}h jejum · {fastingGuidance.eatingWindowHours}h alimentação</span></div><div className="fasting-controls"><label className="field">Protocolo<select value={state.fastingPlan.protocol} onChange={(event) => saveFastingPlan({ ...state.fastingPlan, protocol: event.target.value as Protocol })}><option>12:12</option><option>14:10</option><option>16:8</option><option>18:6</option></select></label><label className="field">Última refeição<input type="time" value={state.fastingPlan.lastMeal} onChange={(event) => saveFastingPlan({ ...state.fastingPlan, lastMeal: event.target.value })} /></label><label className="field">Contexto<select value={state.fastingPlan.context} onChange={(event) => saveFastingPlan({ ...state.fastingPlan, context: event.target.value as Context })}><option value="work">Trabalho</option><option value="training">Treino</option><option value="hot_day">Dia quente</option><option value="rest">Repouso</option></select></label></div><div className="fasting-grid"><div><div className="fasting-label">Entre refeições</div><strong>{fastingGuidance.hydration} ml</strong><p>Meta mínima de hidratação entre a última e a próxima refeição.</p></div><div><div className="fasting-label">O que ingerir</div><strong>0 kcal</strong><p>Água, café sem açúcar, chá sem açúcar e eletrólitos sem calorias quando necessário.</p></div><div><div className="fasting-label">Próxima refeição</div><strong>{fastingGuidance.minKcal} a {fastingGuidance.maxKcal} kcal</strong><p>Com pelo menos {fastingGuidance.protein}g de proteína e {fastingGuidance.fiber}g de fibra, ajustando ao restante do diário.</p></div></div><p className="safety-note">Orientação educativa. Gestação, diabetes, histórico de transtorno alimentar, uso de medicação ou sintomas como tontura e tremor exigem avaliação profissional antes de seguir jejum.</p></article>
