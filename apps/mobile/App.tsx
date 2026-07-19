@@ -19,6 +19,7 @@ type WaterEntry = { id: string; date: string; amountMl: number };
 type ExerciseEntry = { id: string; date: string; name: string; minutes: number; calories: number };
 type WeightEntry = { id: string; date: string; weightKg: number };
 type FastingSession = { id: string; protocol: Protocol; startedAt: string; endedAt?: string; targetEndAt?: string; status?: "active" | "completed" | "cancelled" };
+type SavedMeal = { id: string; name: string; meal: Meal; items: Array<Omit<FoodEntry, "id" | "date">> };
 type StoredState = { foods: FoodEntry[]; water: WaterEntry[]; exercises: ExerciseEntry[]; weights: WeightEntry[]; fasting: FastingSession[] };
 
 const mealLabels: Record<Meal, string> = { breakfast: "Café", lunch: "Almoço", dinner: "Jantar", snack: "Lanche" };
@@ -59,6 +60,9 @@ export default function App() {
   const [store, setStore] = useState<StoredState>(emptyState);
   const [foodForm, setFoodForm] = useState(emptyFoodForm);
   const [editingFoodId, setEditingFoodId] = useState<string | null>(null);
+  const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([]);
+  const [savedMealName, setSavedMealName] = useState("Minha refeição");
+  const [savedMealBase, setSavedMealBase] = useState<Meal>("lunch");
   const [query, setQuery] = useState("");
   const [foodOptions, setFoodOptions] = useState<ApiFood[]>([]);
   const [searching, setSearching] = useState(false);
@@ -106,14 +110,15 @@ export default function App() {
     setSyncMessage("Sincronizando com Supabase...");
     try {
       await ensureProfile();
-      const [diary, water, exercise, weight, fasting] = await Promise.all([
+      const [diary, water, exercise, weight, fasting, savedMealRows] = await Promise.all([
         supabase.from("diary_entries").select("id,meal,food_name_snapshot,quantity,unit,calories_kcal,protein_g,carbs_g,fat_g").eq("diary_date", selectedDate).order("created_at"),
         supabase.from("water_entries").select("id,amount_ml").eq("diary_date", selectedDate).order("created_at"),
         supabase.from("exercise_entries").select("id,name,duration_minutes,calories_kcal").eq("diary_date", selectedDate).order("created_at"),
         supabase.from("weight_entries").select("id,weight_kg,measured_on").order("measured_on", { ascending: true }).limit(30),
-        supabase.from("fasting_sessions").select("id,started_at,ended_at,target_end_at,status").order("started_at", { ascending: false }).limit(8)
+        supabase.from("fasting_sessions").select("id,started_at,ended_at,target_end_at,status").order("started_at", { ascending: false }).limit(8),
+        supabase.from("saved_meals").select("id,name,meal,items").order("created_at", { ascending: false }).limit(30)
       ]);
-      const firstError = diary.error || water.error || exercise.error || weight.error || fasting.error;
+      const firstError = diary.error || water.error || exercise.error || weight.error || fasting.error || savedMealRows.error;
       if (firstError) throw firstError;
       setStore({
         foods: diary.data?.map((entry) => ({ id: entry.id, date: selectedDate, meal: entry.meal as Meal, name: entry.food_name_snapshot, quantity: Number(entry.quantity ?? 0), unit: entry.unit ?? "g", calories: Number(entry.calories_kcal ?? 0), protein: Number(entry.protein_g ?? 0), carbs: Number(entry.carbs_g ?? 0), fat: Number(entry.fat_g ?? 0) })) ?? [],
@@ -122,6 +127,7 @@ export default function App() {
         weights: weight.data?.map((entry) => ({ id: entry.id, date: entry.measured_on, weightKg: Number(entry.weight_kg ?? 0) })) ?? [],
         fasting: fasting.data?.map((entry) => ({ id: entry.id, protocol: fastPlan.protocol, startedAt: entry.started_at, endedAt: entry.ended_at ?? undefined, targetEndAt: entry.target_end_at, status: entry.status as "active" | "completed" | "cancelled" })) ?? []
       });
+      setSavedMeals(savedMealRows.data?.map((item) => ({ id: item.id, name: item.name, meal: item.meal as Meal, items: Array.isArray(item.items) ? item.items as Array<Omit<FoodEntry, "id" | "date">> : [] })) ?? []);
       setSyncMessage("Sincronizado com Supabase.");
     } catch (error) {
       setSyncMessage(error instanceof Error ? error.message : "Falha ao sincronizar.");
@@ -251,6 +257,42 @@ export default function App() {
     }
     setStore((current) => ({ ...current, foods: current.foods.filter((item) => item.id !== id) }));
   }
+  async function createSavedMealFromDay() {
+    const items = dayFoods.filter((entry) => entry.meal === savedMealBase).map(({ id, date, ...item }) => item);
+    if (!items.length) return Alert.alert("Refeição salva", `Não há itens em ${mealLabels[savedMealBase]} para salvar.`);
+    const name = savedMealName.trim() || `${mealLabels[savedMealBase]} ${brDate(selectedDate)}`;
+    const localMeal: SavedMeal = { id: `${Date.now()}`, name, meal: savedMealBase, items };
+    if (supabase && session) {
+      await ensureProfile();
+      const { data, error } = await supabase.from("saved_meals").insert({ user_id: session.user.id, name, meal: savedMealBase, items }).select("id,name,meal,items").single();
+      if (error) return Alert.alert("Sincronização", error.message);
+      if (data) localMeal.id = data.id;
+    }
+    setSavedMeals((current) => [localMeal, ...current]);
+    setSavedMealName("Minha refeição");
+  }
+
+  async function applySavedMeal(savedMeal: SavedMeal) {
+    if (!savedMeal.items.length) return;
+    let entries: FoodEntry[] = savedMeal.items.map((item, index) => ({ ...item, id: `${Date.now()}-${index}`, date: selectedDate }));
+    if (supabase && session) {
+      await ensureProfile();
+      const payload = entries.map((entry) => ({ user_id: session.user.id, diary_date: selectedDate, meal: savedMeal.meal, quantity: entry.quantity, unit: entry.unit, food_name_snapshot: entry.name, calories_kcal: entry.calories, protein_g: entry.protein, carbs_g: entry.carbs, fat_g: entry.fat }));
+      const { data, error } = await supabase.from("diary_entries").insert(payload).select("id,meal,food_name_snapshot,quantity,unit,calories_kcal,protein_g,carbs_g,fat_g");
+      if (error) return Alert.alert("Sincronização", error.message);
+      entries = data?.map((entry) => ({ id: entry.id, date: selectedDate, meal: entry.meal as Meal, name: entry.food_name_snapshot, quantity: Number(entry.quantity ?? 0), unit: entry.unit ?? "g", calories: Number(entry.calories_kcal ?? 0), protein: Number(entry.protein_g ?? 0), carbs: Number(entry.carbs_g ?? 0), fat: Number(entry.fat_g ?? 0) })) ?? entries;
+    }
+    setStore((current) => ({ ...current, foods: [...current.foods, ...entries] }));
+    setScreen("today");
+  }
+
+  async function deleteSavedMeal(id: string) {
+    if (supabase && session) {
+      const { error } = await supabase.from("saved_meals").delete().eq("id", id);
+      if (error) return Alert.alert("Sincronização", error.message);
+    }
+    setSavedMeals((current) => current.filter((item) => item.id !== id));
+  }
   async function addWater(amount = Number(waterMl) || 250) {
     const entry: WaterEntry = { id: `${Date.now()}`, date: selectedDate, amountMl: amount };
     if (supabase && session) {
@@ -339,7 +381,7 @@ export default function App() {
     <DateSwitcher selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
     <Text style={styles.syncText}>{syncing ? "Sincronizando..." : syncMessage || "Conectado ao Supabase"}</Text>
     {screen === "today" ? <TodayScreen totals={totals} remaining={remaining} waterTotal={waterTotal} exerciseTotal={exerciseTotal} latestWeight={latestWeight} entries={dayFoods} removeFood={removeFood} startEditFood={startEditFood} /> : null}
-    {screen === "log" ? <LogScreen foodForm={foodForm} setFoodForm={setFoodForm} scannedFood={scannedFood} addFood={addFood} editingFoodId={editingFoodId} cancelFoodEdit={cancelFoodEdit} query={query} setQuery={setQuery} foodOptions={foodOptions} searching={searching} doSearch={doSearch} applyApiFood={applyApiFood} /> : null}
+    {screen === "log" ? <LogScreen foodForm={foodForm} setFoodForm={setFoodForm} scannedFood={scannedFood} addFood={addFood} editingFoodId={editingFoodId} cancelFoodEdit={cancelFoodEdit} query={query} setQuery={setQuery} foodOptions={foodOptions} searching={searching} doSearch={doSearch} applyApiFood={applyApiFood} savedMeals={savedMeals} savedMealName={savedMealName} setSavedMealName={setSavedMealName} savedMealBase={savedMealBase} setSavedMealBase={setSavedMealBase} createSavedMealFromDay={createSavedMealFromDay} applySavedMeal={applySavedMeal} deleteSavedMeal={deleteSavedMeal} /> : null}
     {screen === "scanner" ? <ScannerScreen scannerPermission={scannerPermission} scanLocked={scanLocked} openScanner={openScanner} handleBarcode={handleBarcode} /> : null}
     {screen === "fasting" ? <FastingScreen activeFast={activeFast} fastPlan={fastPlan} setFastPlan={setFastPlan} guidance={guidance} toggleFast={toggleFast} loadGuidance={loadGuidance} /> : null}
     {screen === "progress" ? <ProgressScreen waterMl={waterMl} setWaterMl={setWaterMl} addWater={addWater} exerciseForm={exerciseForm} setExerciseForm={setExerciseForm} addExercise={addExercise} weightKg={weightKg} setWeightKg={setWeightKg} addWeight={addWeight} removeWater={removeWater} removeExercise={removeExercise} removeWeight={removeWeight} weights={store.weights} exercises={dayExercises} waterEntries={dayWater} waterTotal={waterTotal} /> : null}
@@ -358,8 +400,13 @@ function TodayScreen({ totals, remaining, waterTotal, exerciseTotal, latestWeigh
   return <View><View style={styles.grid}><Metric label="Restantes" value={remaining} suffix="kcal" /><Metric label="Consumidas" value={totals.calories} suffix="kcal" /><Metric label="Água" value={waterTotal / 1000} suffix="L" decimals={1} /><Metric label="Exercícios" value={exerciseTotal} suffix="kcal" /></View><View style={styles.grid}><Metric label="Proteína" value={totals.protein} suffix="g" decimals={1} /><Metric label="Carboidratos" value={totals.carbs} suffix="g" decimals={1} /><Metric label="Gorduras" value={totals.fat} suffix="g" decimals={1} /><Metric label="Peso" value={latestWeight?.weightKg || 0} suffix="kg" decimals={1} /></View><View style={styles.card}><Text style={styles.cardTitle}>Diário alimentar</Text>{entries.length === 0 ? <Text style={styles.muted}>Nenhum alimento registrado nessa data.</Text> : null}{entries.map((entry) => <View key={entry.id} style={styles.entryRow}><View style={styles.entryContent}><Text style={styles.entryName}>{entry.name}</Text><Text style={styles.muted}>{mealLabels[entry.meal]} · {numberText(entry.quantity)}{entry.unit} · P {entry.protein}g · C {entry.carbs}g · G {entry.fat}g</Text></View><View style={styles.entryRight}><Text style={styles.kcal}>{entry.calories} kcal</Text><Pressable onPress={() => startEditFood(entry)}><Text style={styles.editText}>Editar</Text></Pressable><Pressable onPress={() => removeFood(entry.id)}><Text style={styles.deleteText}>Excluir</Text></Pressable></View></View>)}</View></View>;
 }
 
-function LogScreen({ foodForm, setFoodForm, scannedFood, addFood, editingFoodId, cancelFoodEdit, query, setQuery, foodOptions, searching, doSearch, applyApiFood }: { foodForm: typeof emptyFoodForm; setFoodForm: Dispatch<SetStateAction<typeof emptyFoodForm>>; scannedFood: BarcodeFood | null; addFood: () => void; editingFoodId: string | null; cancelFoodEdit: () => void; query: string; setQuery: (value: string) => void; foodOptions: ApiFood[]; searching: boolean; doSearch: () => void; applyApiFood: (food: ApiFood) => void }) {
-  return <View><View style={styles.card}><Text style={styles.cardTitle}>Buscar na base</Text><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Ex.: hambúrguer, pizza, arroz" value={query} onChangeText={setQuery} /><Pressable style={styles.squareButton} onPress={doSearch}><Ionicons name="search" size={22} color="#fff" /></Pressable></View>{searching ? <Text style={styles.muted}>Buscando...</Text> : null}{foodOptions.map((food) => <Pressable key={`${food.code || food.name}-${food.brand || ""}`} style={styles.foodOption} onPress={() => applyApiFood(food)}><Text style={styles.entryName}>{food.name}</Text><Text style={styles.muted}>{food.brand || "Base nutricional"} · {Math.round(food.calories_kcal_100g)} kcal/100g</Text></Pressable>)}</View><View style={styles.card}><Text style={styles.cardTitle}>{editingFoodId ? "Editar alimento" : "Registrar alimento"}</Text>{editingFoodId ? <Text style={styles.success}>Editando item do diário.</Text> : null}{scannedFood ? <Text style={styles.success}>Produto lido pelo código de barras.</Text> : null}<MealPicker value={foodForm.meal} onChange={(meal) => setFoodForm((current) => ({ ...current, meal }))} /><TextInput style={styles.input} placeholder="Alimento" value={foodForm.name} onChangeText={(name) => setFoodForm((current) => ({ ...current, name }))} /><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Quantidade" keyboardType="numeric" value={foodForm.quantity} onChangeText={(quantity) => setFoodForm((current) => ({ ...current, quantity }))} /><TextInput style={[styles.input, styles.flex]} placeholder="Unidade" value={foodForm.unit} onChangeText={(unit) => setFoodForm((current) => ({ ...current, unit }))} /></View><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Kcal/100g" keyboardType="numeric" value={foodForm.calories} onChangeText={(calories) => setFoodForm((current) => ({ ...current, calories }))} /><TextInput style={[styles.input, styles.flex]} placeholder="Proteína" keyboardType="numeric" value={foodForm.protein} onChangeText={(protein) => setFoodForm((current) => ({ ...current, protein }))} /></View><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Carbo." keyboardType="numeric" value={foodForm.carbs} onChangeText={(carbs) => setFoodForm((current) => ({ ...current, carbs }))} /><TextInput style={[styles.input, styles.flex]} placeholder="Gord." keyboardType="numeric" value={foodForm.fat} onChangeText={(fat) => setFoodForm((current) => ({ ...current, fat }))} /></View><Pressable style={styles.primaryButton} onPress={addFood}><Text style={styles.primaryButtonText}>{editingFoodId ? "Salvar alterações" : "Adicionar ao diário"}</Text></Pressable>{editingFoodId ? <Pressable style={styles.secondaryButton} onPress={cancelFoodEdit}><Text style={styles.secondaryButtonText}>Cancelar edição</Text></Pressable> : null}</View></View>;
+function LogScreen({ foodForm, setFoodForm, scannedFood, addFood, editingFoodId, cancelFoodEdit, query, setQuery, foodOptions, searching, doSearch, applyApiFood, savedMeals, savedMealName, setSavedMealName, savedMealBase, setSavedMealBase, createSavedMealFromDay, applySavedMeal, deleteSavedMeal }: { foodForm: typeof emptyFoodForm; setFoodForm: Dispatch<SetStateAction<typeof emptyFoodForm>>; scannedFood: BarcodeFood | null; addFood: () => void; editingFoodId: string | null; cancelFoodEdit: () => void; query: string; setQuery: (value: string) => void; foodOptions: ApiFood[]; searching: boolean; doSearch: () => void; applyApiFood: (food: ApiFood) => void; savedMeals: SavedMeal[]; savedMealName: string; setSavedMealName: (value: string) => void; savedMealBase: Meal; setSavedMealBase: (meal: Meal) => void; createSavedMealFromDay: () => void; applySavedMeal: (meal: SavedMeal) => void; deleteSavedMeal: (id: string) => void }) {
+  return <View><SavedMealsPanel savedMeals={savedMeals} savedMealName={savedMealName} setSavedMealName={setSavedMealName} savedMealBase={savedMealBase} setSavedMealBase={setSavedMealBase} createSavedMealFromDay={createSavedMealFromDay} applySavedMeal={applySavedMeal} deleteSavedMeal={deleteSavedMeal} /><View style={styles.card}><Text style={styles.cardTitle}>Buscar na base</Text><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Ex.: hambúrguer, pizza, arroz" value={query} onChangeText={setQuery} /><Pressable style={styles.squareButton} onPress={doSearch}><Ionicons name="search" size={22} color="#fff" /></Pressable></View>{searching ? <Text style={styles.muted}>Buscando...</Text> : null}{foodOptions.map((food) => <Pressable key={`${food.code || food.name}-${food.brand || ""}`} style={styles.foodOption} onPress={() => applyApiFood(food)}><Text style={styles.entryName}>{food.name}</Text><Text style={styles.muted}>{food.brand || "Base nutricional"} · {Math.round(food.calories_kcal_100g)} kcal/100g</Text></Pressable>)}</View><View style={styles.card}><Text style={styles.cardTitle}>{editingFoodId ? "Editar alimento" : "Registrar alimento"}</Text>{editingFoodId ? <Text style={styles.success}>Editando item do diário.</Text> : null}{scannedFood ? <Text style={styles.success}>Produto lido pelo código de barras.</Text> : null}<MealPicker value={foodForm.meal} onChange={(meal) => setFoodForm((current) => ({ ...current, meal }))} /><TextInput style={styles.input} placeholder="Alimento" value={foodForm.name} onChangeText={(name) => setFoodForm((current) => ({ ...current, name }))} /><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Quantidade" keyboardType="numeric" value={foodForm.quantity} onChangeText={(quantity) => setFoodForm((current) => ({ ...current, quantity }))} /><TextInput style={[styles.input, styles.flex]} placeholder="Unidade" value={foodForm.unit} onChangeText={(unit) => setFoodForm((current) => ({ ...current, unit }))} /></View><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Kcal/100g" keyboardType="numeric" value={foodForm.calories} onChangeText={(calories) => setFoodForm((current) => ({ ...current, calories }))} /><TextInput style={[styles.input, styles.flex]} placeholder="Proteína" keyboardType="numeric" value={foodForm.protein} onChangeText={(protein) => setFoodForm((current) => ({ ...current, protein }))} /></View><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Carbo." keyboardType="numeric" value={foodForm.carbs} onChangeText={(carbs) => setFoodForm((current) => ({ ...current, carbs }))} /><TextInput style={[styles.input, styles.flex]} placeholder="Gord." keyboardType="numeric" value={foodForm.fat} onChangeText={(fat) => setFoodForm((current) => ({ ...current, fat }))} /></View><Pressable style={styles.primaryButton} onPress={addFood}><Text style={styles.primaryButtonText}>{editingFoodId ? "Salvar alterações" : "Adicionar ao diário"}</Text></Pressable>{editingFoodId ? <Pressable style={styles.secondaryButton} onPress={cancelFoodEdit}><Text style={styles.secondaryButtonText}>Cancelar edição</Text></Pressable> : null}</View></View>;
+}
+
+
+function SavedMealsPanel({ savedMeals, savedMealName, setSavedMealName, savedMealBase, setSavedMealBase, createSavedMealFromDay, applySavedMeal, deleteSavedMeal }: { savedMeals: SavedMeal[]; savedMealName: string; setSavedMealName: (value: string) => void; savedMealBase: Meal; setSavedMealBase: (meal: Meal) => void; createSavedMealFromDay: () => void; applySavedMeal: (meal: SavedMeal) => void; deleteSavedMeal: (id: string) => void }) {
+  return <View style={styles.card}><Text style={styles.cardTitle}>Refeições salvas</Text><Text style={styles.muted}>Salve os itens de uma refeição da data atual e aplique depois em qualquer dia.</Text><TextInput style={styles.input} placeholder="Nome da refeição" value={savedMealName} onChangeText={setSavedMealName} /><MealPicker value={savedMealBase} onChange={setSavedMealBase} /><Pressable style={styles.secondaryButton} onPress={createSavedMealFromDay}><Text style={styles.secondaryButtonText}>Salvar refeição da data</Text></Pressable>{savedMeals.length === 0 ? <Text style={styles.muted}>Nenhuma refeição salva ainda.</Text> : null}{savedMeals.map((meal) => <View key={meal.id} style={styles.listRow}><View style={styles.entryContent}><Text style={styles.entryName}>{meal.name}</Text><Text style={styles.muted}>{mealLabels[meal.meal]} ? {meal.items.length} item(ns) ? {meal.items.reduce((sum, item) => sum + item.calories, 0)} kcal</Text></View><View style={styles.entryRight}><Pressable onPress={() => applySavedMeal(meal)}><Text style={styles.editText}>Aplicar</Text></Pressable><Pressable onPress={() => deleteSavedMeal(meal.id)}><Text style={styles.deleteText}>Excluir</Text></Pressable></View></View>)}</View>;
 }
 
 function MealPicker({ value, onChange }: { value: Meal; onChange: (meal: Meal) => void }) { return <View style={styles.chips}>{(Object.keys(mealLabels) as Meal[]).map((meal) => <Pressable key={meal} style={[styles.chip, value === meal && styles.chipActive]} onPress={() => onChange(meal)}><Text style={[styles.chipText, value === meal && styles.chipTextActive]}>{mealLabels[meal]}</Text></Pressable>)}</View>; }
