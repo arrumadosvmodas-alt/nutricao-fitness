@@ -69,6 +69,8 @@ type FastingPlan = {
   context: Context;
 };
 
+type FastingSession = { id: string; startedAt: string; endedAt?: string | null; targetEndAt: string; status: "active" | "completed" | "cancelled" };
+
 type AppState = {
   calorieTarget: number;
   foodEntries: FoodEntry[];
@@ -140,6 +142,22 @@ function getRecentDates(endDate: string, count = 7) {
 function shortDateLabel(date: string) {
   const [, month, day] = date.split("-");
   return `${day}/${month}`;
+}
+
+function addHoursToDate(date: Date, hours: number) {
+  return new Date(date.getTime() + hours * 60 * 60 * 1000);
+}
+
+function formatDuration(ms: number) {
+  const safeMs = Math.max(0, ms);
+  const totalMinutes = Math.floor(safeMs / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}h ${String(minutes).padStart(2, "0")}min`;
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 const protocolHours: Record<Protocol, readonly [number, number]> = {
@@ -304,6 +322,8 @@ export default function Home() {
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [goalTargets, setGoalTargets] = useState<GoalTargets>(defaultTargets);
   const [fastingGuidance, setFastingGuidance] = useState<FastingGuidance>(getLocalFastingGuidance(defaultState.fastingPlan));
+  const [fastingSessions, setFastingSessions] = useState<FastingSession[]>([]);
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const [onboardingForm, setOnboardingForm] = useState<OnboardingForm>({
     fullName: "",
     birthDate: "1990-01-01",
@@ -344,6 +364,11 @@ export default function Home() {
   }, [ready, session, state]);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setNowTick(Date.now()), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     if (!supabase || !session) return;
     void loadRemoteData();
   }, [supabase, session, selectedDate, reportRange]);
@@ -356,7 +381,7 @@ export default function Home() {
 
     const reportDates = getRecentDates(selectedDate, reportRange);
     const reportStart = reportDates[0];
-    const [profile, foods, diary, water, exercise, weight, goals, fasting, savedMealRows, reportDiary, reportWater, reportExercise] = await Promise.all([
+    const [profile, foods, diary, water, exercise, weight, goals, fasting, fastingSessionRows, savedMealRows, reportDiary, reportWater, reportExercise] = await Promise.all([
       supabase.from("profiles").select("full_name,birth_date,sex,height_cm,current_weight_kg,target_weight_kg,activity_level,goal").eq("id", session.user.id).maybeSingle(),
       supabase.from("foods").select("id,owner_id,name,brand,source,calories_kcal,protein_g,carbs_g,fat_g,serving_unit,serving_size").order("name").limit(100),
       supabase.from("diary_entries").select("id,meal,food_name_snapshot,quantity,unit,calories_kcal,protein_g,carbs_g,fat_g").eq("diary_date", selectedDate).order("created_at"),
@@ -365,6 +390,7 @@ export default function Home() {
       supabase.from("weight_entries").select("id,weight_kg,measured_on").order("measured_on", { ascending: true }).limit(30),
       supabase.from("nutrition_goals").select("calories_kcal,protein_g,carbs_g,fat_g").order("created_at", { ascending: false }).limit(1),
       supabase.from("fasting_plans").select("id,protocol,last_meal_time,next_meal_time,hydration_target_ml,break_fast_min_kcal,break_fast_max_kcal,protein_min_g,active").eq("active", true).order("created_at", { ascending: false }).limit(1),
+      supabase.from("fasting_sessions").select("id,started_at,ended_at,target_end_at,status").order("started_at", { ascending: false }).limit(8),
       supabase.from("saved_meals").select("id,name,meal,items").order("created_at", { ascending: false }).limit(20),
       supabase.from("diary_entries").select("diary_date,calories_kcal,protein_g,carbs_g,fat_g").gte("diary_date", reportStart).lte("diary_date", selectedDate),
       supabase.from("water_entries").select("diary_date,amount_ml").gte("diary_date", reportStart).lte("diary_date", selectedDate),
@@ -415,7 +441,10 @@ export default function Home() {
         meal: item.meal as Meal,
         items: Array.isArray(item.items) ? item.items as Array<Omit<FoodEntry, "id">> : []
       })));
-    }    setState((current) => ({
+    }
+    setFastingSessions(fastingSessionRows.data?.map((item) => ({ id: item.id, startedAt: item.started_at, endedAt: item.ended_at, targetEndAt: item.target_end_at, status: item.status as "active" | "completed" | "cancelled" })) ?? []);
+
+    setState((current) => ({
       ...current,
       calorieTarget: goals.data?.[0]?.calories_kcal ? Number(goals.data[0].calories_kcal) : current.calorieTarget,
       foodEntries: diary.data?.map((entry) => ({
@@ -1135,6 +1164,35 @@ export default function Home() {
     else if (data?.id) setState((current) => ({ ...current, fastingPlan: { ...current.fastingPlan, id: data.id } }));
   }
 
+  const activeFastingSession = fastingSessions.find((sessionItem) => sessionItem.status === "active");
+  const fastingElapsed = activeFastingSession ? formatDuration(nowTick - new Date(activeFastingSession.startedAt).getTime()) : "0h 00min";
+  const fastingRemaining = activeFastingSession ? formatDuration(new Date(activeFastingSession.targetEndAt).getTime() - nowTick) : formatDuration(fastingGuidance.fastingHours * 60 * 60 * 1000);
+  const fastingProgress = activeFastingSession ? Math.min(100, Math.round(((nowTick - new Date(activeFastingSession.startedAt).getTime()) / Math.max(1, new Date(activeFastingSession.targetEndAt).getTime() - new Date(activeFastingSession.startedAt).getTime())) * 100)) : 0;
+
+  async function startFastingSession() {
+    if (activeFastingSession) return setMessage("Já existe um jejum em andamento.");
+    const startedAt = new Date();
+    const targetEndAt = addHoursToDate(startedAt, fastingGuidance.fastingHours);
+    const localSession: FastingSession = { id: createId("fasting"), startedAt: startedAt.toISOString(), targetEndAt: targetEndAt.toISOString(), status: "active" };
+    if (isCloud) {
+      const { data, error } = await supabase!.from("fasting_sessions").insert({ user_id: session!.user.id, plan_id: state.fastingPlan.id ?? null, started_at: localSession.startedAt, target_end_at: localSession.targetEndAt, status: "active" }).select("id,started_at,ended_at,target_end_at,status").single();
+      if (error) return setMessage(error.message);
+      if (data) localSession.id = data.id;
+    }
+    setFastingSessions((current) => [localSession, ...current]);
+    setMessage(`Jejum iniciado. Meta de término: ${formatDateTime(localSession.targetEndAt)}.`);
+  }
+
+  async function finishFastingSession() {
+    if (!activeFastingSession) return setMessage("Não há jejum ativo para encerrar.");
+    const endedAt = new Date().toISOString();
+    if (isCloud) {
+      const { error } = await supabase!.from("fasting_sessions").update({ ended_at: endedAt, status: "completed" }).eq("id", activeFastingSession.id);
+      if (error) return setMessage(error.message);
+    }
+    setFastingSessions((current) => current.map((item) => item.id === activeFastingSession.id ? { ...item, endedAt, status: "completed" } : item));
+    setMessage(`Jejum encerrado com ${formatDuration(new Date(endedAt).getTime() - new Date(activeFastingSession.startedAt).getTime())}.`);
+  }
   function resetDemo() {
     window.localStorage.removeItem("nutricao-fitness-state");
     setState(defaultState);
@@ -1249,7 +1307,7 @@ export default function Home() {
           <article className="card span-4"><div className="card-title"><Dumbbell size={16} /> Exercício</div><form className="stack-form" onSubmit={addExercise}><input value={exerciseForm.name} onChange={(event) => setExerciseForm({ ...exerciseForm, name: event.target.value })} placeholder="Ex.: musculação" /><div className="two-cols"><input type="number" value={exerciseForm.minutes} onChange={(event) => setExerciseForm({ ...exerciseForm, minutes: event.target.value })} placeholder="min" /><input type="number" value={exerciseForm.calories} onChange={(event) => setExerciseForm({ ...exerciseForm, calories: event.target.value })} placeholder="kcal" /></div><button className="primary-action" type="submit"><Plus size={18} /> Adicionar</button></form></article>
           <article className="card span-4" id="progress"><div className="card-title"><Scale size={16} /> Peso</div><form className="inline-form" onSubmit={addWeight}><input type="number" step="0.1" value={weightForm} onChange={(event) => setWeightForm(event.target.value)} placeholder="kg" /><button className="primary-action" type="submit">Salvar</button></form><p className="muted">Na data: {state.weightEntries.find((entry) => entry.date === selectedDate)?.weightKg ?? "-"} kg · Último: {state.weightEntries.at(-1)?.weightKg ?? "-"} kg</p></article>
 
-          <article className="card span-12 fasting-card" id="fasting"><div className="fasting-header"><div><div className="card-title">Plano de jejum intermitente</div><h2>Protocolo {state.fastingPlan.protocol}: última refeição {state.fastingPlan.lastMeal}, próxima {fastingGuidance.nextMeal}</h2></div><span className="fasting-pill"><Clock3 size={16} /> {fastingGuidance.fastingHours}h jejum · {fastingGuidance.eatingWindowHours}h alimentação</span></div><div className="fasting-controls"><label className="field">Protocolo<select value={state.fastingPlan.protocol} onChange={(event) => saveFastingPlan({ ...state.fastingPlan, protocol: event.target.value as Protocol })}><option>12:12</option><option>14:10</option><option>16:8</option><option>18:6</option></select></label><label className="field">Última refeição<input type="time" value={state.fastingPlan.lastMeal} onChange={(event) => saveFastingPlan({ ...state.fastingPlan, lastMeal: event.target.value })} /></label><label className="field">Contexto<select value={state.fastingPlan.context} onChange={(event) => saveFastingPlan({ ...state.fastingPlan, context: event.target.value as Context })}><option value="work">Trabalho</option><option value="training">Treino</option><option value="hot_day">Dia quente</option><option value="rest">Repouso</option></select></label></div><div className="fasting-grid"><div><div className="fasting-label">Entre refeições</div><strong>{fastingGuidance.hydration} ml</strong><p>Meta mínima de hidratação entre a última e a próxima refeição.</p></div><div><div className="fasting-label">O que ingerir</div><strong>0 kcal</strong><p>Água, café sem açúcar, chá sem açúcar e eletrólitos sem calorias quando necessário.</p></div><div><div className="fasting-label">Próxima refeição</div><strong>{fastingGuidance.minKcal} a {fastingGuidance.maxKcal} kcal</strong><p>Com pelo menos {fastingGuidance.protein}g de proteína e {fastingGuidance.fiber}g de fibra, ajustando ao restante do diário.</p></div></div><p className="safety-note">Orientação educativa. Gestação, diabetes, histórico de transtorno alimentar, uso de medicação ou sintomas como tontura e tremor exigem avaliação profissional antes de seguir jejum.</p></article>
+          <article className="card span-12 fasting-card" id="fasting"><div className="fasting-header"><div><div className="card-title"><Clock3 size={16} /> Plano de jejum intermitente</div><h2>{activeFastingSession ? "Jejum em andamento" : `Protocolo ${state.fastingPlan.protocol}: próxima refeição ${fastingGuidance.nextMeal}`}</h2><p className="muted compact">{activeFastingSession ? `Iniciado em ${formatDateTime(activeFastingSession.startedAt)} · termina em ${formatDateTime(activeFastingSession.targetEndAt)}` : `Última refeição ${state.fastingPlan.lastMeal} · janela alimentar de ${fastingGuidance.eatingWindowHours}h`}</p></div><span className="fasting-pill"><Clock3 size={16} /> {fastingGuidance.fastingHours}h jejum · {fastingGuidance.eatingWindowHours}h alimentação</span></div><div className="fasting-timer"><div><span>Status</span><strong>{activeFastingSession ? "Em jejum" : "Janela livre"}</strong></div><div><span>Decorrido</span><strong>{fastingElapsed}</strong></div><div><span>Restante</span><strong>{fastingRemaining}</strong></div><div className="fasting-actions"><button className="primary-action" type="button" onClick={startFastingSession} disabled={Boolean(activeFastingSession)}>Iniciar jejum</button><button className="secondary-action" type="button" onClick={finishFastingSession} disabled={!activeFastingSession}>Encerrar</button></div></div><div className="progress fasting-progress"><span style={{ width: `${fastingProgress}%`, background: "var(--blue)" }} /></div><div className="fasting-controls"><label className="field">Protocolo<select value={state.fastingPlan.protocol} onChange={(event) => saveFastingPlan({ ...state.fastingPlan, protocol: event.target.value as Protocol })}><option>12:12</option><option>14:10</option><option>16:8</option><option>18:6</option></select></label><label className="field">Última refeição<input type="time" value={state.fastingPlan.lastMeal} onChange={(event) => saveFastingPlan({ ...state.fastingPlan, lastMeal: event.target.value })} /></label><label className="field">Contexto<select value={state.fastingPlan.context} onChange={(event) => saveFastingPlan({ ...state.fastingPlan, context: event.target.value as Context })}><option value="work">Trabalho</option><option value="training">Treino</option><option value="hot_day">Dia quente</option><option value="rest">Repouso</option></select></label></div><div className="fasting-grid"><div><div className="fasting-label">Entre refeições</div><strong>{fastingGuidance.hydration} ml</strong><p>Meta mínima de hidratação entre a última e a próxima refeição.</p></div><div><div className="fasting-label">O que ingerir</div><strong>0 kcal</strong><p>Água, café sem açúcar, chá sem açúcar e eletrólitos sem calorias quando necessário.</p></div><div><div className="fasting-label">Próxima refeição</div><strong>{fastingGuidance.minKcal} a {fastingGuidance.maxKcal} kcal</strong><p>Com pelo menos {fastingGuidance.protein}g de proteína e {fastingGuidance.fiber}g de fibra, ajustando ao restante do diário.</p></div></div>{fastingSessions.length ? <div className="fasting-history"><strong>Histórico recente</strong>{fastingSessions.slice(0, 5).map((item) => <div className="fasting-history-row" key={item.id}><span>{formatDateTime(item.startedAt)}</span><span>{item.status === "active" ? "Em andamento" : `Concluído · ${formatDuration(new Date(item.endedAt ?? item.targetEndAt).getTime() - new Date(item.startedAt).getTime())}`}</span></div>)}</div> : null}<p className="safety-note">Orientação educativa. Gestação, diabetes, histórico de transtorno alimentar, uso de medicação ou sintomas como tontura e tremor exigem avaliação profissional antes de seguir jejum.</p></article>
         </section>
       </main>
     </div>
