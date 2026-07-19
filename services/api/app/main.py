@@ -24,6 +24,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://localhost:3000",
+        "https://nutricao-fitness-web.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -33,7 +34,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "version": "foods-search-v1"}
 
 
 @app.post("/goals/calculate", response_model=GoalResponse)
