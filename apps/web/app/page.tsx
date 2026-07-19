@@ -13,6 +13,7 @@ import {
   Scale,
   Search,
   Trash2,
+  UserCog,
   Utensils
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -242,6 +243,7 @@ export default function Home() {
   const [authForm, setAuthForm] = useState({ email: "", password: "" });
   const [foodOptions, setFoodOptions] = useState<FoodOption[]>([]);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [goalTargets, setGoalTargets] = useState<GoalTargets>(defaultTargets);
   const [fastingGuidance, setFastingGuidance] = useState<FastingGuidance>(getLocalFastingGuidance(defaultState.fastingPlan));
   const [onboardingForm, setOnboardingForm] = useState<OnboardingForm>({
@@ -298,7 +300,7 @@ export default function Home() {
       supabase.from("water_entries").select("id,amount_ml").eq("diary_date", today).order("created_at"),
       supabase.from("exercise_entries").select("id,name,duration_minutes,calories_kcal").eq("diary_date", today).order("created_at"),
       supabase.from("weight_entries").select("id,weight_kg,measured_on").order("measured_on", { ascending: true }).limit(30),
-      supabase.from("nutrition_goals").select("calories_kcal").order("created_at", { ascending: false }).limit(1),
+      supabase.from("nutrition_goals").select("calories_kcal,protein_g,carbs_g,fat_g").order("created_at", { ascending: false }).limit(1),
       supabase.from("fasting_plans").select("id,protocol,last_meal_time,next_meal_time,hydration_target_ml,break_fast_min_kcal,break_fast_max_kcal,protein_min_g,active").eq("active", true).order("created_at", { ascending: false }).limit(1)
     ]);
 
@@ -359,7 +361,12 @@ export default function Home() {
     }));
 
     if (goals.data?.[0]) {
-      setGoalTargets((current) => ({ ...current, calories: Number(goals.data[0].calories_kcal) }));
+      setGoalTargets({
+        calories: Number(goals.data[0].calories_kcal),
+        protein: Number(goals.data[0].protein_g ?? defaultTargets.protein),
+        carbs: Number(goals.data[0].carbs_g ?? defaultTargets.carbs),
+        fat: Number(goals.data[0].fat_g ?? defaultTargets.fat)
+      });
     }
     setMessage("Dados sincronizados.");
     setLoadingRemote(false);
@@ -568,6 +575,7 @@ export default function Home() {
           <a href="#food"><Search size={18} /> Registrar</a>
           <a href="#fasting"><Clock3 size={18} /> Jejum</a>
           <a href="#progress"><BarChart3 size={18} /> Progresso</a>
+          {session ? <a href="#profile" onClick={() => setShowProfileEditor(true)}><UserCog size={18} /> Perfil</a> : null}
         </nav>
       </aside>
 
@@ -599,11 +607,11 @@ export default function Home() {
 
         {message ? <p className="status-line">{loadingRemote ? "Carregando: " : ""}{message}</p> : null}
 
-        {session && needsOnboarding ? (
-          <section className="onboarding-panel card">
+        {session && (needsOnboarding || showProfileEditor) ? (
+          <section className="onboarding-panel card" id="profile">
             <div>
-              <div className="card-title">Primeira configuração</div>
-              <h2>Personalizar metas do funcionário</h2>
+              <div className="card-title">{needsOnboarding ? "Primeira configuração" : "Perfil e metas"}</div>
+              <h2>{needsOnboarding ? "Personalizar metas do funcionário" : "Editar dados e recalcular metas"}</h2>
               <p className="muted">Esses dados alimentam o cálculo de calorias, macros e orientação de jejum. São estimativas educativas, não prescrição médica.</p>
             </div>
             <form className="onboarding-form" onSubmit={submitOnboarding}>
@@ -615,7 +623,7 @@ export default function Home() {
               <label className="field">Peso meta kg<input type="number" step="0.1" value={onboardingForm.targetWeightKg} onChange={(event) => setOnboardingForm({ ...onboardingForm, targetWeightKg: event.target.value })} required /></label>
               <label className="field">Atividade<select value={onboardingForm.activityLevel} onChange={(event) => setOnboardingForm({ ...onboardingForm, activityLevel: event.target.value as OnboardingForm["activityLevel"] })}><option value="sedentary">Sedentário</option><option value="light">Leve</option><option value="moderate">Moderado</option><option value="active">Ativo</option><option value="very_active">Muito ativo</option></select></label>
               <label className="field">Objetivo<select value={onboardingForm.goal} onChange={(event) => setOnboardingForm({ ...onboardingForm, goal: event.target.value as OnboardingForm["goal"] })}><option value="lose">Perder peso</option><option value="maintain">Manter peso</option><option value="gain">Ganhar peso</option></select></label>
-              <button className="primary-action" type="submit"><Plus size={18} /> Salvar metas</button>
+              <button className="primary-action" type="submit"><Plus size={18} /> Salvar metas</button>{!needsOnboarding ? <button className="secondary-action" type="button" onClick={() => setShowProfileEditor(false)}>Cancelar</button> : null}
             </form>
           </section>
         ) : null}
