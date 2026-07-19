@@ -1078,3 +1078,199 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+/* MyFitnessPal-inspired interface layer: blue, white, clean fitness app controls */
+:root {
+  --bg: #f4f8fc;
+  --panel: #ffffff;
+  --ink: #111827;
+  --muted: #64748b;
+  --line: #d8e3f0;
+  --green: #22a447;
+  --blue: #0066ee;
+  --coral: #ff7a59;
+  --gold: #f59e0b;
+  --shadow: 0 22px 54px rgba(15, 23, 42, 0.12);
+  --shadow-soft: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+body {
+  background:
+    radial-gradient(circle at 18% -10%, rgba(0, 102, 238, 0.18), transparent 30%),
+    radial-gradient(circle at 90% 8%, rgba(34, 164, 71, 0.12), transparent 28%),
+    linear-gradient(180deg, #f7fbff 0%, #eef5fc 100%);
+}
+
+.sidebar {
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+  border-right: 1px solid #e5edf6;
+  box-shadow: 14px 0 42px rgba(15, 23, 42, 0.06);
+}
+
+.brand {
+  color: #10233f;
+}
+
+.brand-mark {
+  border-radius: 16px;
+  background: linear-gradient(135deg, #0066ee, #2692ff);
+  color: #ffffff;
+  box-shadow: 0 12px 26px rgba(0, 102, 238, 0.28);
+}
+
+.nav a {
+  border-radius: 16px;
+  color: #526175;
+}
+
+.nav a.active,
+.nav a:hover {
+  background: #eaf3ff;
+  border-color: #cfe3ff;
+  color: #005bd4;
+  box-shadow: inset 4px 0 0 #0066ee;
+}
+
+.topbar {
+  border-color: #dbe8f7;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(238, 247, 255, 0.96)),
+    radial-gradient(circle at 95% 0%, rgba(0, 102, 238, 0.16), transparent 34%);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+}
+
+.eyebrow {
+  border-color: #cfe3ff;
+  background: #edf6ff;
+  color: #005bd4;
+}
+
+.card {
+  border-color: #dce7f4;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+}
+
+.card:hover {
+  border-color: #bad7fb;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.09);
+}
+
+.card-title svg,
+.nav a svg {
+  color: currentColor;
+  stroke-width: 2.35;
+}
+
+.stat-card {
+  border-top-color: rgba(0, 102, 238, 0.62);
+}
+
+.stat-card:nth-child(2) { border-top-color: rgba(34, 164, 71, 0.62); }
+.stat-card:nth-child(3) { border-top-color: rgba(38, 146, 255, 0.62); }
+.stat-card:nth-child(4) { border-top-color: rgba(255, 122, 89, 0.62); }
+
+.primary-action {
+  background: linear-gradient(135deg, #0066ee, #268cff);
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(0, 102, 238, 0.2);
+}
+
+.primary-action:hover {
+  background: linear-gradient(135deg, #005bd4, #147cf0);
+}
+
+.secondary-action {
+  border-color: #cfe0f4;
+  background: #ffffff;
+  color: #12355f;
+}
+
+.secondary-action:hover {
+  border-color: #9ec8fa;
+  background: #f3f8ff;
+}
+
+.icon-button:hover {
+  border-color: #9ec8fa;
+  color: #0066ee;
+  background: #f3f8ff;
+}
+
+input,
+select,
+textarea {
+  border-color: #d7e3f2;
+  background-color: #ffffff;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #268cff;
+  box-shadow: 0 0 0 4px rgba(0, 102, 238, 0.13);
+}
+
+select {
+  background-image: linear-gradient(45deg, transparent 50%, #0066ee 50%), linear-gradient(135deg, #0066ee 50%, transparent 50%);
+}
+
+.progress {
+  background: #e5eef8;
+}
+
+.macro,
+.report-summary > div,
+.toolbar-insights span,
+.overview-metrics span,
+.quick-picks,
+.follow-up-box,
+.food-base-item,
+.meal-block,
+.external-result {
+  border-color: #dce7f4;
+  background: #ffffff;
+}
+
+.overview-panel {
+  border-color: #cde3ff;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(239, 247, 255, 0.98)),
+    radial-gradient(circle at top right, rgba(0, 102, 238, 0.14), transparent 38%);
+}
+
+.quick-chip {
+  border-color: #cfe3ff;
+  background: #f1f7ff;
+  color: #0f3f7b;
+}
+
+.meal-chip {
+  border-color: #c8efd3;
+  background: #f1fbf4;
+  color: #166534;
+}
+
+.report-bar {
+  background: linear-gradient(180deg, #e9f2fd, #f7fbff);
+}
+
+.report-bar span {
+  background: linear-gradient(180deg, #0066ee, #5db1ff);
+}
+
+.fasting-card {
+  background:
+    linear-gradient(135deg, #ffffff, #f0f8ff),
+    radial-gradient(circle at 100% 0%, rgba(34, 164, 71, 0.14), transparent 40%);
+}
+
+.fasting-pill {
+  background: #eaf3ff;
+  color: #005bd4;
+}
+
+@media (max-width: 760px) {
+  .sidebar {
+    background: #ffffff;
+  }
+}

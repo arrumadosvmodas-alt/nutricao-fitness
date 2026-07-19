@@ -1053,7 +1053,7 @@ export default function Home() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand"><span className="brand-mark"><Apple size={20} /></span>Nutrição & Fitness</div>
+        <div className="brand"><span className="brand-mark"><Flame size={20} /></span>Nutrição & Fitness</div>
         <nav className="nav" aria-label="Navegação principal">
           <a className="active" href="#today"><Utensils size={18} /> Hoje</a>
           <a href="#food"><Search size={18} /> Registrar</a>
