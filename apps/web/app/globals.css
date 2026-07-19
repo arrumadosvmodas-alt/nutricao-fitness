@@ -527,3 +527,22 @@ h2 {
     grid-template-columns: 1fr;
   }
 }
+
+.result-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.result-heading em {
+  border: 1px solid #d9eadf;
+  border-radius: 999px;
+  background: #f0f8f3;
+  color: #1e7a4c;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
