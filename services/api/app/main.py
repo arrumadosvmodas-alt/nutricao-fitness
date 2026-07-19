@@ -25,6 +25,9 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://localhost:3000",
+        "http://localhost:8082",
+        "http://127.0.0.1:8082",
+        "http://192.168.0.7:8082",
         "https://nutricao-fitness-web.vercel.app",
     ],
     allow_credentials=True,

@@ -28,7 +28,7 @@ const apiUrl = process.env.EXPO_PUBLIC_API_URL || "https://nutricao-fitnessweb-p
 
 export async function searchFoods(query: string): Promise<ApiFood[]> {
   const response = await fetch(`${apiUrl}/foods/search?q=${encodeURIComponent(query)}&page_size=12`);
-  if (!response.ok) return [];
+  if (!response.ok) throw new Error(`Erro na busca: ${response.status}`);
   const data = await response.json();
   return data.items ?? [];
 }
