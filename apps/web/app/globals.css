@@ -1573,3 +1573,40 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+/* Report range selector */
+.range-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #dce9f8;
+  border-radius: 999px;
+  background: #f8fbff;
+  padding: 5px;
+}
+
+.range-tab {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #526175;
+  font-weight: 800;
+  padding: 8px 11px;
+}
+
+.range-tab:hover,
+.range-tab.active {
+  background: #0066ee;
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(0, 102, 238, 0.18);
+}
+
+@media (max-width: 560px) {
+  .range-tabs {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .range-tab {
+    flex: 1;
+  }
+}
