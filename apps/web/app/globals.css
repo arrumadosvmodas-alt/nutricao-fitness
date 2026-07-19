@@ -1489,3 +1489,87 @@ textarea {
     justify-content: flex-start;
   }
 }
+/* Food categories and diary item editing */
+.category-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #dce9f8;
+  border-radius: 22px;
+  background: #f8fbff;
+  margin-top: 14px;
+  padding: 14px;
+}
+
+.category-tabs,
+.category-suggestions,
+.entry-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.category-tab {
+  border: 1px solid #cfe0f4;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #12355f;
+  font-weight: 800;
+  padding: 9px 12px;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+}
+
+.category-tab:hover,
+.category-tab.active {
+  border-color: #9ec8fa;
+  background: #eaf3ff;
+  color: #005bd4;
+  box-shadow: 0 10px 22px rgba(0, 102, 238, 0.1);
+  transform: translateY(-1px);
+}
+
+.diary-edit-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(4, minmax(90px, 1fr));
+  gap: 10px;
+  border-top: 1px solid #edf3fa;
+  margin-top: 10px;
+  padding-top: 12px;
+}
+
+.diary-edit-form .field.wide {
+  grid-column: span 2;
+}
+
+.entry-actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 980px) {
+  .diary-edit-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .diary-edit-form .field.wide {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 560px) {
+  .category-tabs,
+  .category-suggestions,
+  .entry-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .category-tab,
+  .category-suggestions .quick-chip,
+  .entry-actions .icon-button {
+    width: 100%;
+  }
+
+  .diary-edit-form {
+    grid-template-columns: 1fr;
+  }
+}

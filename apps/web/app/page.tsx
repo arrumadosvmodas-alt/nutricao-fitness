@@ -12,6 +12,7 @@ import {
   Flame,
   LogOut,
   Plus,
+  Pencil,
   RotateCcw,
   Scale,
   Search,
@@ -86,6 +87,18 @@ const mealLabels: Record<Meal, string> = {
   dinner: "Jantar",
   snack: "Lanche"
 };
+
+type FoodCategory = "basics" | "protein" | "breakfast" | "fruit" | "fast_food" | "drinks" | "sweets";
+
+const foodCategories: Array<{ id: FoodCategory; label: string; query: string; items: string[] }> = [
+  { id: "basics", label: "Básicos", query: "arroz feijao frango ovo batata", items: ["Arroz branco", "Feijão carioca", "Peito de frango", "Ovo cozido", "Batata-doce"] },
+  { id: "protein", label: "Proteínas", query: "carne frango ovo peixe atum", items: ["Carne bovina", "Frango grelhado", "Ovo mexido", "Tilápia", "Atum"] },
+  { id: "breakfast", label: "Café da manhã", query: "pao leite iogurte banana aveia queijo", items: ["Pão francês", "Leite integral", "Iogurte natural", "Banana", "Aveia"] },
+  { id: "fruit", label: "Frutas", query: "banana maca mamao laranja abacate", items: ["Banana", "Maçã", "Mamão", "Laranja", "Abacate"] },
+  { id: "fast_food", label: "Fast food", query: "hamburguer pizza batata frita coxinha cachorro quente", items: ["Hambúrguer", "Pizza", "Batata frita", "Coxinha", "Cachorro-quente"] },
+  { id: "drinks", label: "Bebidas", query: "agua refrigerante suco leite", items: ["Água", "Refrigerante", "Suco de laranja", "Leite integral"] },
+  { id: "sweets", label: "Doces", query: "brigadeiro sorvete chocolate doce", items: ["Brigadeiro", "Sorvete", "Chocolate", "Doce"] }
+];
 
 function foodSourceLabel(source?: FoodSource) {
   if (source === "base_comum") return "Base comum";
@@ -302,6 +315,9 @@ export default function Home() {
   });
 
   const [foodForm, setFoodForm] = useState({ meal: "lunch" as Meal, name: "", quantity: "1", unit: "porção", calories: "", protein: "", carbs: "", fat: "" });
+  const [activeFoodCategory, setActiveFoodCategory] = useState<FoodCategory | "all">("all");
+  const [editingDiaryEntryId, setEditingDiaryEntryId] = useState<string | null>(null);
+  const [diaryEditForm, setDiaryEditForm] = useState({ meal: "lunch" as Meal, name: "", quantity: "1", unit: "porção", calories: "", protein: "", carbs: "", fat: "" });
   const [waterAmount, setWaterAmount] = useState("250");
   const [exerciseForm, setExerciseForm] = useState({ name: "", minutes: "30", calories: "" });
   const [weightForm, setWeightForm] = useState("");
@@ -927,6 +943,79 @@ export default function Home() {
     setState((current) => ({ ...current, foodEntries: [...current.foodEntries, ...copied] }));
     setMessage(`${copied.length} alimento(s) duplicados no diário local.`);
   }
+  function selectFoodCategory(categoryId: FoodCategory | "all") {
+    setActiveFoodCategory(categoryId);
+    if (categoryId === "all") {
+      setExternalFoodQuery("");
+      setMessage("Mostrando todas as opções de busca.");
+      return;
+    }
+    const category = foodCategories.find((item) => item.id === categoryId);
+    if (!category) return;
+    setExternalFoodQuery(category.query);
+    setMessage(`Categoria ${category.label} selecionada. Clique em Buscar ou escolha uma sugestão.`);
+  }
+
+  function chooseCategorySuggestion(name: string) {
+    setExternalFoodQuery(name);
+    setFoodForm((current) => ({ ...current, name, quantity: "100", unit: "g" }));
+    setMessage(`Sugestão carregada: ${name}. Clique em Buscar para trazer valores da base ampliada.`);
+  }
+
+  function startEditDiaryEntry(entry: FoodEntry) {
+    setSelectedPer100gFood(null);
+    setEditingDiaryEntryId(entry.id);
+    setDiaryEditForm({
+      meal: entry.meal,
+      name: entry.name,
+      quantity: String(entry.quantity),
+      unit: entry.unit,
+      calories: String(entry.calories),
+      protein: String(entry.protein),
+      carbs: String(entry.carbs),
+      fat: String(entry.fat)
+    });
+  }
+
+  function cancelEditDiaryEntry() {
+    setEditingDiaryEntryId(null);
+    setDiaryEditForm({ meal: "lunch", name: "", quantity: "1", unit: "porção", calories: "", protein: "", carbs: "", fat: "" });
+  }
+
+  async function updateDiaryEntry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingDiaryEntryId) return;
+    if (!diaryEditForm.name.trim() || !diaryEditForm.calories) return setMessage("Preencha nome e calorias para atualizar o item.");
+    const updated: FoodEntry = {
+      id: editingDiaryEntryId,
+      meal: diaryEditForm.meal,
+      name: diaryEditForm.name.trim(),
+      quantity: Number(diaryEditForm.quantity) || 1,
+      unit: diaryEditForm.unit.trim() || "porção",
+      calories: Number(diaryEditForm.calories) || 0,
+      protein: Number(diaryEditForm.protein) || 0,
+      carbs: Number(diaryEditForm.carbs) || 0,
+      fat: Number(diaryEditForm.fat) || 0
+    };
+
+    if (isCloud) {
+      const { error } = await supabase!.from("diary_entries").update({
+        meal: updated.meal,
+        quantity: updated.quantity,
+        unit: updated.unit,
+        calories_kcal: updated.calories,
+        protein_g: updated.protein,
+        carbs_g: updated.carbs,
+        fat_g: updated.fat,
+        food_name_snapshot: updated.name
+      }).eq("id", editingDiaryEntryId);
+      if (error) return setMessage(error.message);
+    }
+
+    setState((current) => ({ ...current, foodEntries: current.foodEntries.map((entry) => entry.id === editingDiaryEntryId ? updated : entry) }));
+    cancelEditDiaryEntry();
+    setMessage(`Item atualizado: ${updated.name}.`);
+  }
   async function addFood(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!foodForm.name.trim() || !foodForm.calories) return;
@@ -1144,13 +1233,13 @@ export default function Home() {
           <article className="card stat-card span-3"><div className="card-title"><Droplets size={16} /> Água</div><div className="metric">{(totals.water / 1000).toFixed(1)}<small> L</small></div><div className="progress"><span style={{ width: `${Math.min(100, Math.round((totals.water / 2500) * 100))}%`, background: "var(--blue)" }} /></div></article>
           <article className="card stat-card span-3"><div className="card-title"><Dumbbell size={16} /> Exercícios</div><div className="metric">{totals.exercise}<small> kcal</small></div><p className="muted">Crédito configurável no diário.</p></article>
 
-          <article className="card span-7"><div className="section-heading"><div className="card-title"><ClipboardList size={16} /> Diário da data</div><button className="secondary-action small-action" type="button" onClick={copyYesterdayDiary}>Copiar ontem</button></div><div className="meals">{(Object.keys(mealLabels) as Meal[]).map((meal) => { const entries = state.foodEntries.filter((entry) => entry.meal === meal); const kcal = entries.reduce((sum, entry) => sum + entry.calories, 0); return <div className="meal-block" key={meal}><div className="meal-row meal-total"><div className="meal-name">{mealLabels[meal]}</div><div className="meal-actions"><div className="kcal">{kcal} kcal</div>{entries.length ? <button className="secondary-action tiny-action" type="button" onClick={() => prepareMealTemplate(meal, entries)}>Salvar refeição</button> : null}</div></div>{entries.length === 0 ? <p className="muted compact">Nenhum item registrado.</p> : null}{entries.map((entry) => <div className="entry-row" key={entry.id}><div><div>{entry.name}</div><div className="meal-food">{entry.quantity} {entry.unit} · P {entry.protein}g · C {entry.carbs}g · G {entry.fat}g</div></div><button className="icon-button" type="button" onClick={() => deleteFood(entry.id)} aria-label={`Remover ${entry.name}`}><Trash2 size={16} /></button></div>)}</div>; })}</div></article>
+          <article className="card span-7"><div className="section-heading"><div className="card-title"><ClipboardList size={16} /> Diário da data</div><button className="secondary-action small-action" type="button" onClick={copyYesterdayDiary}>Copiar ontem</button></div><div className="meals">{(Object.keys(mealLabels) as Meal[]).map((meal) => { const entries = state.foodEntries.filter((entry) => entry.meal === meal); const kcal = entries.reduce((sum, entry) => sum + entry.calories, 0); return <div className="meal-block" key={meal}><div className="meal-row meal-total"><div className="meal-name">{mealLabels[meal]}</div><div className="meal-actions"><div className="kcal">{kcal} kcal</div>{entries.length ? <button className="secondary-action tiny-action" type="button" onClick={() => prepareMealTemplate(meal, entries)}>Salvar refeição</button> : null}</div></div>{entries.length === 0 ? <p className="muted compact">Nenhum item registrado.</p> : null}{entries.map((entry) => editingDiaryEntryId === entry.id ? <form className="diary-edit-form" key={entry.id} onSubmit={updateDiaryEntry}><label className="field wide">Alimento<input value={diaryEditForm.name} onChange={(event) => setDiaryEditForm({ ...diaryEditForm, name: event.target.value })} /></label><label className="field">Refeição<select value={diaryEditForm.meal} onChange={(event) => setDiaryEditForm({ ...diaryEditForm, meal: event.target.value as Meal })}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="field">Qtd.<input type="number" value={diaryEditForm.quantity} onChange={(event) => setDiaryEditForm({ ...diaryEditForm, quantity: event.target.value })} /></label><label className="field">Unidade<input value={diaryEditForm.unit} onChange={(event) => setDiaryEditForm({ ...diaryEditForm, unit: event.target.value })} /></label><label className="field">Kcal<input type="number" value={diaryEditForm.calories} onChange={(event) => setDiaryEditForm({ ...diaryEditForm, calories: event.target.value })} /></label><label className="field">Proteína<input type="number" value={diaryEditForm.protein} onChange={(event) => setDiaryEditForm({ ...diaryEditForm, protein: event.target.value })} /></label><label className="field">Carbo.<input type="number" value={diaryEditForm.carbs} onChange={(event) => setDiaryEditForm({ ...diaryEditForm, carbs: event.target.value })} /></label><label className="field">Gord.<input type="number" value={diaryEditForm.fat} onChange={(event) => setDiaryEditForm({ ...diaryEditForm, fat: event.target.value })} /></label><button className="primary-action" type="submit">Salvar</button><button className="secondary-action" type="button" onClick={cancelEditDiaryEntry}>Cancelar</button></form> : <div className="entry-row" key={entry.id}><div><div>{entry.name}</div><div className="meal-food">{entry.quantity} {entry.unit} · P {entry.protein}g · C {entry.carbs}g · G {entry.fat}g</div></div><div className="entry-actions"><button className="icon-button" type="button" onClick={() => startEditDiaryEntry(entry)} aria-label={`Editar ${entry.name}`}><Pencil size={16} /></button><button className="icon-button" type="button" onClick={() => deleteFood(entry.id)} aria-label={`Remover ${entry.name}`}><Trash2 size={16} /></button></div></div>)}</div>; })}</div></article>
 
           <article className="card span-5"><div className="card-title"><Beef size={16} /> Macros</div><div className="macro-grid"><div className="macro"><span>Proteína</span><strong style={{ color: "var(--green)" }}>{totals.protein}g</strong><small>meta {goalTargets.protein}g</small></div><div className="macro"><span>Carboidratos</span><strong style={{ color: "var(--blue)" }}>{totals.carbs}g</strong><small>meta {goalTargets.carbs}g</small></div><div className="macro"><span>Gorduras</span><strong style={{ color: "var(--coral)" }}>{totals.fat}g</strong><small>meta {goalTargets.fat}g</small></div></div><label className="field solo">Meta calórica diária<input type="number" value={state.calorieTarget} onChange={(event) => setState((current) => ({ ...current, calorieTarget: Number(event.target.value) || 0, fastingPlan: { ...current.fastingPlan, calorieTarget: Number(event.target.value) || 0 } }))} /></label></article>
 
 
           <article className="card span-12" id="reports"><div className="card-title"><BarChart3 size={16} /> Histórico e relatórios</div><div className="report-summary"><div><span>Média kcal</span><strong>{reportAverageCalories}</strong><small>meta {state.calorieTarget} kcal</small></div><div><span>Aderência</span><strong>{reportAdherence}%</strong><small>{reportTotals.adherentDays}/{reportCount} dias dentro da faixa</small></div><div><span>Água média</span><strong>{(reportAverageWater / 1000).toFixed(1)} L</strong><small>por dia</small></div><div><span>Peso</span><strong>{latestWeight ? `${latestWeight.weightKg} kg` : "-"}</strong><small>{weightDelta === null ? "sem comparação" : `${weightDelta > 0 ? "+" : ""}${weightDelta} kg vs. anterior`}</small></div></div><div className="report-bars">{reportSource.map((day) => <div className="report-day" key={day.date}><div className="report-date">{shortDateLabel(day.date)}</div><div className="report-bar"><span style={{ height: `${Math.max(4, Math.round((day.calories / maxReportCalories) * 100))}%` }} /></div><div className="report-kcal">{Math.round(day.calories)} kcal</div><small>P {Math.round(day.protein)}g · C {Math.round(day.carbs)}g · G {Math.round(day.fat)}g</small></div>)}</div><div className="follow-up-box"><div className="result-heading"><strong>Resumo para acompanhamento</strong><button className="secondary-action" type="button" onClick={copyFollowUpSummary}>Copiar resumo</button></div><textarea readOnly value={followUpSummary} /></div><p className="muted compact">Resumo educativo dos últimos {reportCount} dia(s). Dias sem registro aparecem zerados; quanto mais completo o diário, melhor o relatório.</p></article>
-          <article className="card span-12" id="food"><div className="card-title"><Search size={16} /> Registrar alimento</div><form className="external-food-search" onSubmit={searchExternalFoods}><input value={externalFoodQuery} onChange={(event) => setExternalFoodQuery(event.target.value)} placeholder="Buscar na base ampliada: iogurte, arroz, pão integral..." /><button className="secondary-action" type="submit"><Search size={18} /> Buscar</button></form><div className="quick-picks"><div><strong>Refeições salvas</strong><span>Modelos com vários itens</span></div>{savedMeals.length ? <div className="quick-chip-list">{savedMeals.map((item) => <button className="quick-chip meal-chip" type="button" key={item.id} onClick={() => applySavedMeal(item)}>{item.name}<small>{mealLabels[item.meal]} · {item.items.length} item(ns)</small></button>)}</div> : <p className="muted compact">Nenhuma refeição salva ainda.</p>}</div><div className="quick-picks"><div><strong>Recentes</strong><span>Itens já usados nesta data</span></div>{recentFoods.length ? <div className="quick-chip-list">{recentFoods.map((entry) => <button className="quick-chip" type="button" key={entry.id} onClick={() => chooseRecentFood(entry)}>{entry.name}<small>{entry.calories} kcal</small></button>)}</div> : <p className="muted compact">Sem recentes nesta data.</p>}</div>{myFoodOptions.length ? <div className="quick-picks"><div><strong>Favoritos salvos</strong><span>Sua base pessoal</span></div><div className="quick-chip-list">{myFoodOptions.slice(0, 8).map((item) => <button className="quick-chip" type="button" key={item.id} onClick={() => chooseFoodOption(item.id)}>{item.name}<small>{item.calories} kcal</small></button>)}</div></div> : null}{externalFoods.length ? <div className="external-results">{externalFoods.map((item) => <button className="external-result" type="button" key={`${item.code}-${item.name}`} onClick={() => chooseExternalFood(item)}><div className="result-heading"><strong>{item.name}</strong><em>{foodSourceLabel(item.source)}</em></div><span>{item.brand || foodSourceLabel(item.source)} · {Math.round(item.calories_kcal_100g)} kcal/100g · P {item.protein_g_100g}g · C {item.carbs_g_100g}g · G {item.fat_g_100g}g</span></button>)}</div> : null}{foodOptions.length ? <label className="field solo">Alimentos do Supabase<select defaultValue="" onChange={(event) => chooseFoodOption(event.target.value)}><option value="" disabled>Selecionar alimento da base</option>{foodOptions.map((item) => <option key={item.id} value={item.id}>{item.name}{item.brand ? ` - ${item.brand}` : ""} · {foodSourceLabel(item.source)}</option>)}</select></label> : null}<form className="form-grid" onSubmit={addFood}><label className="field wide">Alimento<input value={foodForm.name} onChange={(event) => { setSelectedPer100gFood(null); setFoodForm({ ...foodForm, name: event.target.value }); }} placeholder="Ex.: arroz, feijão e frango" /></label><label className="field">Refeição<select value={foodForm.meal} onChange={(event) => setFoodForm({ ...foodForm, meal: event.target.value as Meal })}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="field">Qtd.<input type="number" value={foodForm.quantity} onChange={(event) => { setFoodForm({ ...foodForm, quantity: event.target.value }); if (selectedPer100gFood) applyPer100gFood(selectedPer100gFood, Number(event.target.value)); }} /></label><label className="field">Unidade<input value={foodForm.unit} onChange={(event) => { setSelectedPer100gFood(null); setFoodForm({ ...foodForm, unit: event.target.value }); }} /></label><label className="field">Kcal<input type="number" value={foodForm.calories} onChange={(event) => setFoodForm({ ...foodForm, calories: event.target.value })} /></label><label className="field">Proteína g<input type="number" value={foodForm.protein} onChange={(event) => setFoodForm({ ...foodForm, protein: event.target.value })} /></label><label className="field">Carbo. g<input type="number" value={foodForm.carbs} onChange={(event) => setFoodForm({ ...foodForm, carbs: event.target.value })} /></label><label className="field">Gord. g<input type="number" value={foodForm.fat} onChange={(event) => setFoodForm({ ...foodForm, fat: event.target.value })} /></label><button className="primary-action" type="submit"><Plus size={18} /> Adicionar</button><button className="secondary-action" type="button" onClick={saveCustomFood}>Salvar na base</button></form></article>
+          <article className="card span-12" id="food"><div className="card-title"><Search size={16} /> Registrar alimento</div><div className="category-panel"><div className="category-tabs"><button className={activeFoodCategory === "all" ? "category-tab active" : "category-tab"} type="button" onClick={() => selectFoodCategory("all")}>Todos</button>{foodCategories.map((category) => <button className={activeFoodCategory === category.id ? "category-tab active" : "category-tab"} type="button" key={category.id} onClick={() => selectFoodCategory(category.id)}>{category.label}</button>)}</div>{activeFoodCategory !== "all" ? <div className="category-suggestions">{foodCategories.find((category) => category.id === activeFoodCategory)?.items.map((item) => <button className="quick-chip" type="button" key={item} onClick={() => chooseCategorySuggestion(item)}>{item}</button>)}</div> : <p className="muted compact">Escolha uma categoria para ver sugestões rápidas ou digite livremente na busca.</p>}</div><form className="external-food-search" onSubmit={searchExternalFoods}><input value={externalFoodQuery} onChange={(event) => setExternalFoodQuery(event.target.value)} placeholder="Buscar na base ampliada: iogurte, arroz, pão integral..." /><button className="secondary-action" type="submit"><Search size={18} /> Buscar</button></form><div className="quick-picks"><div><strong>Refeições salvas</strong><span>Modelos com vários itens</span></div>{savedMeals.length ? <div className="quick-chip-list">{savedMeals.map((item) => <button className="quick-chip meal-chip" type="button" key={item.id} onClick={() => applySavedMeal(item)}>{item.name}<small>{mealLabels[item.meal]} · {item.items.length} item(ns)</small></button>)}</div> : <p className="muted compact">Nenhuma refeição salva ainda.</p>}</div><div className="quick-picks"><div><strong>Recentes</strong><span>Itens já usados nesta data</span></div>{recentFoods.length ? <div className="quick-chip-list">{recentFoods.map((entry) => <button className="quick-chip" type="button" key={entry.id} onClick={() => chooseRecentFood(entry)}>{entry.name}<small>{entry.calories} kcal</small></button>)}</div> : <p className="muted compact">Sem recentes nesta data.</p>}</div>{myFoodOptions.length ? <div className="quick-picks"><div><strong>Favoritos salvos</strong><span>Sua base pessoal</span></div><div className="quick-chip-list">{myFoodOptions.slice(0, 8).map((item) => <button className="quick-chip" type="button" key={item.id} onClick={() => chooseFoodOption(item.id)}>{item.name}<small>{item.calories} kcal</small></button>)}</div></div> : null}{externalFoods.length ? <div className="external-results">{externalFoods.map((item) => <button className="external-result" type="button" key={`${item.code}-${item.name}`} onClick={() => chooseExternalFood(item)}><div className="result-heading"><strong>{item.name}</strong><em>{foodSourceLabel(item.source)}</em></div><span>{item.brand || foodSourceLabel(item.source)} · {Math.round(item.calories_kcal_100g)} kcal/100g · P {item.protein_g_100g}g · C {item.carbs_g_100g}g · G {item.fat_g_100g}g</span></button>)}</div> : null}{foodOptions.length ? <label className="field solo">Alimentos do Supabase<select defaultValue="" onChange={(event) => chooseFoodOption(event.target.value)}><option value="" disabled>Selecionar alimento da base</option>{foodOptions.map((item) => <option key={item.id} value={item.id}>{item.name}{item.brand ? ` - ${item.brand}` : ""} · {foodSourceLabel(item.source)}</option>)}</select></label> : null}<form className="form-grid" onSubmit={addFood}><label className="field wide">Alimento<input value={foodForm.name} onChange={(event) => { setSelectedPer100gFood(null); setFoodForm({ ...foodForm, name: event.target.value }); }} placeholder="Ex.: arroz, feijão e frango" /></label><label className="field">Refeição<select value={foodForm.meal} onChange={(event) => setFoodForm({ ...foodForm, meal: event.target.value as Meal })}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="field">Qtd.<input type="number" value={foodForm.quantity} onChange={(event) => { setFoodForm({ ...foodForm, quantity: event.target.value }); if (selectedPer100gFood) applyPer100gFood(selectedPer100gFood, Number(event.target.value)); }} /></label><label className="field">Unidade<input value={foodForm.unit} onChange={(event) => { setSelectedPer100gFood(null); setFoodForm({ ...foodForm, unit: event.target.value }); }} /></label><label className="field">Kcal<input type="number" value={foodForm.calories} onChange={(event) => setFoodForm({ ...foodForm, calories: event.target.value })} /></label><label className="field">Proteína g<input type="number" value={foodForm.protein} onChange={(event) => setFoodForm({ ...foodForm, protein: event.target.value })} /></label><label className="field">Carbo. g<input type="number" value={foodForm.carbs} onChange={(event) => setFoodForm({ ...foodForm, carbs: event.target.value })} /></label><label className="field">Gord. g<input type="number" value={foodForm.fat} onChange={(event) => setFoodForm({ ...foodForm, fat: event.target.value })} /></label><button className="primary-action" type="submit"><Plus size={18} /> Adicionar</button><button className="secondary-action" type="button" onClick={saveCustomFood}>Salvar na base</button></form></article>
 
 
           
