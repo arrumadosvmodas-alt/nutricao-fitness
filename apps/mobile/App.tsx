@@ -18,7 +18,7 @@ type FoodEntry = { id: string; date: string; meal: Meal; name: string; quantity:
 type WaterEntry = { id: string; date: string; amountMl: number };
 type ExerciseEntry = { id: string; date: string; name: string; minutes: number; calories: number };
 type WeightEntry = { id: string; date: string; weightKg: number };
-type FastingSession = { id: string; protocol: Protocol; startedAt: string; endedAt?: string };
+type FastingSession = { id: string; protocol: Protocol; startedAt: string; endedAt?: string; targetEndAt?: string; status?: "active" | "completed" | "cancelled" };
 type StoredState = { foods: FoodEntry[]; water: WaterEntry[]; exercises: ExerciseEntry[]; weights: WeightEntry[]; fasting: FastingSession[] };
 
 const mealLabels: Record<Meal, string> = { breakfast: "Café", lunch: "Almoço", dinner: "Jantar", snack: "Lanche" };
@@ -62,6 +62,8 @@ export default function App() {
   const [weightKg, setWeightKg] = useState("");
   const [fastPlan, setFastPlan] = useState({ protocol: "16:8" as Protocol, weightKg: "70", calorieTarget: "2100", context: "normal" as FastContext });
   const [guidance, setGuidance] = useState<FastingGuidance | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState("");
 
   useEffect(() => {
     if (!supabase) { setLoadingSession(false); return; }
@@ -79,6 +81,50 @@ export default function App() {
   useEffect(() => {
     AsyncStorage.setItem(storageKey(session?.user.email), JSON.stringify(store)).catch(() => undefined);
   }, [store, session?.user.email]);
+
+  async function ensureProfile() {
+    if (!supabase || !session) return;
+    await supabase.from("profiles").upsert({
+      id: session.user.id,
+      full_name: session.user.email?.split("@")[0] || "Usu?rio",
+      locale: "pt-BR",
+      timezone: "America/Fortaleza"
+    });
+  }
+
+  async function loadCloudData() {
+    if (!supabase || !session) return;
+    setSyncing(true);
+    setSyncMessage("Sincronizando com Supabase...");
+    try {
+      await ensureProfile();
+      const [diary, water, exercise, weight, fasting] = await Promise.all([
+        supabase.from("diary_entries").select("id,meal,food_name_snapshot,quantity,unit,calories_kcal,protein_g,carbs_g,fat_g").eq("diary_date", selectedDate).order("created_at"),
+        supabase.from("water_entries").select("id,amount_ml").eq("diary_date", selectedDate).order("created_at"),
+        supabase.from("exercise_entries").select("id,name,duration_minutes,calories_kcal").eq("diary_date", selectedDate).order("created_at"),
+        supabase.from("weight_entries").select("id,weight_kg,measured_on").order("measured_on", { ascending: true }).limit(30),
+        supabase.from("fasting_sessions").select("id,started_at,ended_at,target_end_at,status").order("started_at", { ascending: false }).limit(8)
+      ]);
+      const firstError = diary.error || water.error || exercise.error || weight.error || fasting.error;
+      if (firstError) throw firstError;
+      setStore({
+        foods: diary.data?.map((entry) => ({ id: entry.id, date: selectedDate, meal: entry.meal as Meal, name: entry.food_name_snapshot, quantity: Number(entry.quantity ?? 0), unit: entry.unit ?? "g", calories: Number(entry.calories_kcal ?? 0), protein: Number(entry.protein_g ?? 0), carbs: Number(entry.carbs_g ?? 0), fat: Number(entry.fat_g ?? 0) })) ?? [],
+        water: water.data?.map((entry) => ({ id: entry.id, date: selectedDate, amountMl: Number(entry.amount_ml ?? 0) })) ?? [],
+        exercises: exercise.data?.map((entry) => ({ id: entry.id, date: selectedDate, name: entry.name, minutes: Number(entry.duration_minutes ?? 0), calories: Number(entry.calories_kcal ?? 0) })) ?? [],
+        weights: weight.data?.map((entry) => ({ id: entry.id, date: entry.measured_on, weightKg: Number(entry.weight_kg ?? 0) })) ?? [],
+        fasting: fasting.data?.map((entry) => ({ id: entry.id, protocol: fastPlan.protocol, startedAt: entry.started_at, endedAt: entry.ended_at ?? undefined, targetEndAt: entry.target_end_at, status: entry.status as "active" | "completed" | "cancelled" })) ?? []
+      });
+      setSyncMessage("Sincronizado com Supabase.");
+    } catch (error) {
+      setSyncMessage(error instanceof Error ? error.message : "Falha ao sincronizar.");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  useEffect(() => {
+    loadCloudData();
+  }, [session?.user.id, selectedDate]);
 
   const dayFoods = store.foods.filter((item) => item.date === selectedDate);
   const dayWater = store.water.filter((item) => item.date === selectedDate);
@@ -139,25 +185,79 @@ export default function App() {
     setScreen("scanner");
   }
 
-  function addFood() {
+  async function addFood() {
     if (!foodForm.name.trim() || !foodForm.calories) return Alert.alert("Alimento", "Preencha nome e calorias.");
     const quantity = Number(foodForm.quantity.replace(",", ".")) || 100;
     const factor = foodForm.unit.toLowerCase() === "g" || foodForm.unit.toLowerCase() === "ml" ? quantity / 100 : 1;
-    setStore((current) => ({ ...current, foods: [...current.foods, {
+    const entry: FoodEntry = {
       id: `${Date.now()}`, date: selectedDate, meal: foodForm.meal, name: foodForm.name.trim(), quantity, unit: foodForm.unit.trim() || "g",
       calories: Math.round((Number(foodForm.calories.replace(",", ".")) || 0) * factor),
       protein: Math.round((Number(foodForm.protein.replace(",", ".")) || 0) * factor * 10) / 10,
       carbs: Math.round((Number(foodForm.carbs.replace(",", ".")) || 0) * factor * 10) / 10,
       fat: Math.round((Number(foodForm.fat.replace(",", ".")) || 0) * factor * 10) / 10
-    }] }));
+    };
+    if (supabase && session) {
+      await ensureProfile();
+      const { data, error } = await supabase.from("diary_entries").insert({ user_id: session.user.id, diary_date: selectedDate, meal: entry.meal, quantity: entry.quantity, unit: entry.unit, food_name_snapshot: entry.name, calories_kcal: entry.calories, protein_g: entry.protein, carbs_g: entry.carbs, fat_g: entry.fat }).select("id").single();
+      if (error) return Alert.alert("Sincroniza??o", error.message);
+      if (data?.id) entry.id = data.id;
+    }
+    setStore((current) => ({ ...current, foods: [...current.foods, entry] }));
     setScannedFood(null); setFoodForm(emptyFoodForm); setScreen("today");
   }
 
-  function removeFood(id: string) { setStore((current) => ({ ...current, foods: current.foods.filter((item) => item.id !== id) })); }
-  function addWater(amount = Number(waterMl) || 250) { setStore((current) => ({ ...current, water: [...current.water, { id: `${Date.now()}`, date: selectedDate, amountMl: amount }] })); }
+  async function removeFood(id: string) {
+    if (supabase && session) {
+      const { error } = await supabase.from("diary_entries").delete().eq("id", id);
+      if (error) return Alert.alert("Sincroniza??o", error.message);
+    }
+    setStore((current) => ({ ...current, foods: current.foods.filter((item) => item.id !== id) }));
+  }
+  async function addWater(amount = Number(waterMl) || 250) {
+    const entry: WaterEntry = { id: `${Date.now()}`, date: selectedDate, amountMl: amount };
+    if (supabase && session) {
+      await ensureProfile();
+      const { data, error } = await supabase.from("water_entries").insert({ user_id: session.user.id, diary_date: selectedDate, amount_ml: amount }).select("id").single();
+      if (error) return Alert.alert("Sincroniza??o", error.message);
+      if (data?.id) entry.id = data.id;
+    }
+    setStore((current) => ({ ...current, water: [...current.water, entry] }));
+  }
   function addExercise() { setStore((current) => ({ ...current, exercises: [...current.exercises, { id: `${Date.now()}`, date: selectedDate, name: exerciseForm.name || "Exercício", minutes: Number(exerciseForm.minutes) || 0, calories: Number(exerciseForm.calories) || 0 }] })); }
-  function addWeight() { const value = Number(weightKg.replace(",", ".")); if (!value) return; setStore((current) => ({ ...current, weights: [...current.weights, { id: `${Date.now()}`, date: selectedDate, weightKg: value }] })); setWeightKg(""); }
-  function toggleFast() { setStore((current) => activeFast ? ({ ...current, fasting: current.fasting.map((item) => item.id === activeFast.id ? { ...item, endedAt: new Date().toISOString() } : item) }) : ({ ...current, fasting: [...current.fasting, { id: `${Date.now()}`, protocol: fastPlan.protocol, startedAt: new Date().toISOString() }] })); }
+  async function addWeight() {
+    const value = Number(weightKg.replace(",", "."));
+    if (!value) return;
+    const entry: WeightEntry = { id: `${Date.now()}`, date: selectedDate, weightKg: value };
+    if (supabase && session) {
+      await ensureProfile();
+      const { data, error } = await supabase.from("weight_entries").insert({ user_id: session.user.id, measured_on: selectedDate, weight_kg: value }).select("id").single();
+      if (error) return Alert.alert("Sincroniza??o", error.message);
+      if (data?.id) entry.id = data.id;
+    }
+    setStore((current) => ({ ...current, weights: [...current.weights, entry] }));
+    setWeightKg("");
+  }
+  async function toggleFast() {
+    if (activeFast) {
+      const endedAt = new Date().toISOString();
+      if (supabase && session) {
+        const { error } = await supabase.from("fasting_sessions").update({ ended_at: endedAt, status: "completed" }).eq("id", activeFast.id);
+        if (error) return Alert.alert("Sincroniza??o", error.message);
+      }
+      setStore((current) => ({ ...current, fasting: current.fasting.map((item) => item.id === activeFast.id ? { ...item, endedAt, status: "completed" } : item) }));
+      return;
+    }
+    const startedAt = new Date();
+    const targetEndAt = new Date(startedAt.getTime() + protocolHours[fastPlan.protocol] * 60 * 60 * 1000);
+    const entry: FastingSession = { id: `${Date.now()}`, protocol: fastPlan.protocol, startedAt: startedAt.toISOString(), targetEndAt: targetEndAt.toISOString(), status: "active" };
+    if (supabase && session) {
+      await ensureProfile();
+      const { data, error } = await supabase.from("fasting_sessions").insert({ user_id: session.user.id, started_at: entry.startedAt, target_end_at: entry.targetEndAt, status: "active" }).select("id").single();
+      if (error) return Alert.alert("Sincroniza??o", error.message);
+      if (data?.id) entry.id = data.id;
+    }
+    setStore((current) => ({ ...current, fasting: [entry, ...current.fasting] }));
+  }
   async function loadGuidance() { const data = await getFastingGuidance({ protocol: fastPlan.protocol, weight_kg: Number(fastPlan.weightKg) || 70, calorie_target: Number(fastPlan.calorieTarget) || 2100, context: fastPlan.context }); setGuidance(data); }
 
   if (loadingSession) return <SafeAreaView style={styles.center}><ActivityIndicator color="#0066ee" /></SafeAreaView>;
@@ -166,6 +266,7 @@ export default function App() {
   return <SafeAreaView style={styles.safe}><StatusBar style="dark" /><ScrollView contentContainerStyle={styles.content}>
     <View style={styles.header}><View><Text style={styles.eyebrow}>Nutrição & Fitness</Text><Text style={styles.title}>Hoje</Text><Text style={styles.subtitle}>{brDate(selectedDate)} · {session.user.email}</Text></View><Pressable style={styles.iconButton} onPress={() => supabase?.auth.signOut()}><Ionicons name="log-out-outline" size={22} color="#12355f" /></Pressable></View>
     <DateSwitcher selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
+    <Text style={styles.syncText}>{syncing ? "Sincronizando..." : syncMessage || "Conectado ao Supabase"}</Text>
     {screen === "today" ? <TodayScreen totals={totals} remaining={remaining} waterTotal={waterTotal} exerciseTotal={exerciseTotal} latestWeight={latestWeight} entries={dayFoods} removeFood={removeFood} /> : null}
     {screen === "log" ? <LogScreen foodForm={foodForm} setFoodForm={setFoodForm} scannedFood={scannedFood} addFood={addFood} query={query} setQuery={setQuery} foodOptions={foodOptions} searching={searching} doSearch={doSearch} applyApiFood={applyApiFood} /> : null}
     {screen === "scanner" ? <ScannerScreen scannerPermission={scannerPermission} scanLocked={scanLocked} openScanner={openScanner} handleBarcode={handleBarcode} /> : null}
@@ -201,5 +302,5 @@ function Metric({ label, value, suffix, decimals = 0 }: { label: string; value: 
 function Tab({ icon, label, active, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; active: boolean; onPress: () => void }) { return <Pressable style={styles.tab} onPress={onPress}><Ionicons name={icon} size={22} color={active ? "#0066ee" : "#64748b"} /><Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text></Pressable>; }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#f4f8fc" }, center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#f4f8fc" }, authWrap: { flex: 1, justifyContent: "center", padding: 22 }, content: { padding: 18, paddingBottom: 110 }, logo: { width: 58, height: 58, borderRadius: 18, backgroundColor: "#0066ee", alignItems: "center", justifyContent: "center", marginBottom: 16 }, header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }, eyebrow: { color: "#0066ee", fontSize: 12, fontWeight: "800", textTransform: "uppercase" }, title: { color: "#111827", fontSize: 34, fontWeight: "900", letterSpacing: -1, marginTop: 4 }, subtitle: { color: "#64748b", fontSize: 15, lineHeight: 22, marginTop: 4 }, warning: { color: "#9a3412", backgroundColor: "#fff7ed", borderRadius: 14, padding: 12, marginBottom: 12, fontWeight: "700" }, success: { color: "#166534", backgroundColor: "#f0fdf4", borderRadius: 14, padding: 12, marginBottom: 12, fontWeight: "700" }, input: { minHeight: 48, borderRadius: 16, borderWidth: 1, borderColor: "#d7e3f2", backgroundColor: "#fff", paddingHorizontal: 14, marginBottom: 10, color: "#111827" }, primaryButton: { minHeight: 50, borderRadius: 16, backgroundColor: "#0066ee", alignItems: "center", justifyContent: "center", marginTop: 4 }, primaryButtonText: { color: "#fff", fontWeight: "900", fontSize: 16 }, secondaryButton: { minHeight: 50, borderRadius: 16, borderWidth: 1, borderColor: "#cfe0f4", backgroundColor: "#fff", alignItems: "center", justifyContent: "center", marginTop: 10 }, secondaryButtonText: { color: "#12355f", fontWeight: "900", fontSize: 16 }, smallButton: { minHeight: 42, borderRadius: 14, backgroundColor: "#e8f1ff", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }, smallButtonText: { color: "#12355f", fontWeight: "900", fontSize: 12 }, squareButton: { width: 50, height: 48, borderRadius: 16, backgroundColor: "#0066ee", alignItems: "center", justifyContent: "center" }, iconButton: { width: 46, height: 46, borderRadius: 16, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#d7e3f2" }, dateRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }, dateInput: { flex: 1, textAlign: "center", marginBottom: 0, fontWeight: "800" }, grid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 12 }, metricCard: { width: "48%", borderRadius: 20, backgroundColor: "#fff", padding: 14, borderWidth: 1, borderColor: "#dce7f4" }, metricLabel: { color: "#64748b", fontSize: 12, fontWeight: "800" }, metricValue: { color: "#111827", fontSize: 25, fontWeight: "900", marginTop: 8 }, metricSuffix: { color: "#64748b", fontSize: 13 }, card: { borderRadius: 22, backgroundColor: "#fff", padding: 16, borderWidth: 1, borderColor: "#dce7f4", marginBottom: 14 }, cardTitle: { color: "#111827", fontSize: 18, fontWeight: "900", marginBottom: 10 }, muted: { color: "#64748b", lineHeight: 21 }, bullet: { color: "#475569", lineHeight: 22, marginTop: 8 }, entryRow: { borderTopWidth: 1, borderTopColor: "#edf3fa", paddingVertical: 12, gap: 8, flexDirection: "row", justifyContent: "space-between" }, entryContent: { flex: 1, paddingRight: 8 }, entryRight: { alignItems: "flex-end" }, entryName: { color: "#111827", fontWeight: "900", fontSize: 15 }, kcal: { color: "#0066ee", fontWeight: "900" }, deleteText: { color: "#dc2626", fontWeight: "800", marginTop: 6 }, row: { flexDirection: "row", gap: 10 }, flex: { flex: 1 }, scannerBox: { height: 360, overflow: "hidden", borderRadius: 22, backgroundColor: "#0f172a", marginTop: 8 }, chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }, chip: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: "#eef5ff", borderWidth: 1, borderColor: "#d7e3f2" }, chipActive: { backgroundColor: "#0066ee", borderColor: "#0066ee" }, chipText: { color: "#12355f", fontWeight: "800" }, chipTextActive: { color: "#fff" }, foodOption: { borderTopWidth: 1, borderTopColor: "#edf3fa", paddingVertical: 12 }, tabBar: { position: "absolute", left: 0, right: 0, bottom: 0, minHeight: 76, paddingTop: 8, paddingBottom: 12, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#dce7f4", flexDirection: "row", justifyContent: "space-around" }, tab: { alignItems: "center", gap: 3, flex: 1 }, tabText: { color: "#64748b", fontSize: 11, fontWeight: "800" }, tabTextActive: { color: "#0066ee" }
+  safe: { flex: 1, backgroundColor: "#f4f8fc" }, center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#f4f8fc" }, authWrap: { flex: 1, justifyContent: "center", padding: 22 }, content: { padding: 18, paddingBottom: 110 }, logo: { width: 58, height: 58, borderRadius: 18, backgroundColor: "#0066ee", alignItems: "center", justifyContent: "center", marginBottom: 16 }, header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }, eyebrow: { color: "#0066ee", fontSize: 12, fontWeight: "800", textTransform: "uppercase" }, title: { color: "#111827", fontSize: 34, fontWeight: "900", letterSpacing: -1, marginTop: 4 }, subtitle: { color: "#64748b", fontSize: 15, lineHeight: 22, marginTop: 4 }, warning: { color: "#9a3412", backgroundColor: "#fff7ed", borderRadius: 14, padding: 12, marginBottom: 12, fontWeight: "700" }, success: { color: "#166534", backgroundColor: "#f0fdf4", borderRadius: 14, padding: 12, marginBottom: 12, fontWeight: "700" }, input: { minHeight: 48, borderRadius: 16, borderWidth: 1, borderColor: "#d7e3f2", backgroundColor: "#fff", paddingHorizontal: 14, marginBottom: 10, color: "#111827" }, primaryButton: { minHeight: 50, borderRadius: 16, backgroundColor: "#0066ee", alignItems: "center", justifyContent: "center", marginTop: 4 }, primaryButtonText: { color: "#fff", fontWeight: "900", fontSize: 16 }, secondaryButton: { minHeight: 50, borderRadius: 16, borderWidth: 1, borderColor: "#cfe0f4", backgroundColor: "#fff", alignItems: "center", justifyContent: "center", marginTop: 10 }, secondaryButtonText: { color: "#12355f", fontWeight: "900", fontSize: 16 }, smallButton: { minHeight: 42, borderRadius: 14, backgroundColor: "#e8f1ff", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }, smallButtonText: { color: "#12355f", fontWeight: "900", fontSize: 12 }, squareButton: { width: 50, height: 48, borderRadius: 16, backgroundColor: "#0066ee", alignItems: "center", justifyContent: "center" }, iconButton: { width: 46, height: 46, borderRadius: 16, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#d7e3f2" }, dateRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }, dateInput: { flex: 1, textAlign: "center", marginBottom: 0, fontWeight: "800" }, grid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 12 }, metricCard: { width: "48%", borderRadius: 20, backgroundColor: "#fff", padding: 14, borderWidth: 1, borderColor: "#dce7f4" }, metricLabel: { color: "#64748b", fontSize: 12, fontWeight: "800" }, metricValue: { color: "#111827", fontSize: 25, fontWeight: "900", marginTop: 8 }, metricSuffix: { color: "#64748b", fontSize: 13 }, card: { borderRadius: 22, backgroundColor: "#fff", padding: 16, borderWidth: 1, borderColor: "#dce7f4", marginBottom: 14 }, cardTitle: { color: "#111827", fontSize: 18, fontWeight: "900", marginBottom: 10 }, muted: { color: "#64748b", lineHeight: 21 }, bullet: { color: "#475569", lineHeight: 22, marginTop: 8 }, entryRow: { borderTopWidth: 1, borderTopColor: "#edf3fa", paddingVertical: 12, gap: 8, flexDirection: "row", justifyContent: "space-between" }, entryContent: { flex: 1, paddingRight: 8 }, entryRight: { alignItems: "flex-end" }, entryName: { color: "#111827", fontWeight: "900", fontSize: 15 }, kcal: { color: "#0066ee", fontWeight: "900" }, deleteText: { color: "#dc2626", fontWeight: "800", marginTop: 6 }, row: { flexDirection: "row", gap: 10 }, flex: { flex: 1 }, scannerBox: { height: 360, overflow: "hidden", borderRadius: 22, backgroundColor: "#0f172a", marginTop: 8 }, chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }, chip: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: "#eef5ff", borderWidth: 1, borderColor: "#d7e3f2" }, chipActive: { backgroundColor: "#0066ee", borderColor: "#0066ee" }, chipText: { color: "#12355f", fontWeight: "800" }, chipTextActive: { color: "#fff" }, foodOption: { borderTopWidth: 1, borderTopColor: "#edf3fa", paddingVertical: 12 }, tabBar: { position: "absolute", left: 0, right: 0, bottom: 0, minHeight: 76, paddingTop: 8, paddingBottom: 12, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#dce7f4", flexDirection: "row", justifyContent: "space-around" }, tab: { alignItems: "center", gap: 3, flex: 1 }, tabText: { color: "#64748b", fontSize: 11, fontWeight: "800" }, tabTextActive: { color: "#0066ee" }, syncText: { color: "#64748b", fontSize: 12, fontWeight: "800", marginBottom: 12 }
 });
