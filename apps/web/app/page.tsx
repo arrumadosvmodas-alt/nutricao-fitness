@@ -494,6 +494,20 @@ export default function Home() {
     reportAverageWater >= 2000 ? "Hidratação média adequada." : "Hidratação média abaixo de 2L/dia.",
     reportAdherence >= 70 ? "Boa aderência à faixa calórica." : "Aderência calórica ainda pode melhorar."
   ];
+  const calorieProgress = Math.min(150, Math.round((totals.consumed / Math.max(state.calorieTarget, 1)) * 100));
+  const waterProgress = Math.min(150, Math.round((totals.water / 2500) * 100));
+  const proteinProgress = Math.min(150, Math.round((totals.protein / Math.max(goalTargets.protein, 1)) * 100));
+  const dashboardScore = Math.round(Math.min(100, (Math.min(calorieProgress, 100) * 0.35) + (Math.min(waterProgress, 100) * 0.25) + (Math.min(proteinProgress, 100) * 0.25) + (Math.min(reportAdherence, 100) * 0.15)));
+  const calorieStatus = remaining >= 0 ? `${remaining} kcal disponíveis` : `${Math.abs(remaining)} kcal acima da meta`;
+  const nextAction = totals.consumed === 0
+    ? "Comece registrando a primeira refeição da data."
+    : totals.protein < goalTargets.protein * 0.7
+      ? "Priorize uma fonte de proteína na próxima refeição."
+      : totals.water < 2000
+        ? "Aumente a hidratação até chegar perto de 2 litros."
+        : remaining < 0
+          ? "Compense com escolhas mais leves no restante do dia."
+          : "Dia bem encaminhado; mantenha o registro completo.";
   const followUpSummary = [
     `Resumo de acompanhamento (${shortDateLabel(reportSource[0].date)} a ${shortDateLabel(reportSource[reportSource.length - 1].date)})`,
     `Dias com registro: ${reportTotals.completeDays}/${reportCount}`,
@@ -1111,6 +1125,19 @@ export default function Home() {
           </section>
         ) : null}
 
+        <section className="overview-panel card" aria-label="Visão geral analítica">
+          <div>
+            <div className="card-title"><BarChart3 size={16} /> Visão geral</div>
+            <h2>Score do dia: {dashboardScore}/100</h2>
+            <p className="muted compact">{nextAction}</p>
+          </div>
+          <div className="overview-metrics">
+            <span><strong>{calorieStatus}</strong><small>Calorias</small></span>
+            <span><strong>{proteinProgress}%</strong><small>Proteína</small></span>
+            <span><strong>{waterProgress}%</strong><small>Hidratação</small></span>
+            <span><strong>{reportAdherence}%</strong><small>Aderência semanal</small></span>
+          </div>
+        </section>
         <section className="grid" aria-label="Resumo do dia">
           <article className="card stat-card span-3"><div className="card-title"><Flame size={16} /> Calorias restantes</div><div className="metric">{remaining}<small> kcal</small></div><div className="progress"><span style={{ width: `${Math.min(100, Math.round((totals.consumed / state.calorieTarget) * 100))}%`, background: "var(--green)" }} /></div></article>
           <article className="card stat-card span-3"><div className="card-title"><Utensils size={16} /> Consumidas</div><div className="metric">{totals.consumed}<small> kcal</small></div><p className="muted">Meta: {state.calorieTarget} kcal</p></article>
