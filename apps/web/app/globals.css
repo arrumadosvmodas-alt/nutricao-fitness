@@ -726,3 +726,23 @@ select {
   border-color: #c7d8ca;
   box-shadow: var(--shadow-soft);
 }
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.small-action {
+  min-height: 34px;
+  padding: 8px 11px;
+  font-size: 13px;
+}
+
+@media (max-width: 560px) {
+  .section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

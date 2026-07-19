@@ -108,6 +108,12 @@ const goalAdjustments = {
 } as const;
 
 const defaultTargets: GoalTargets = { calories: 2100, protein: 126, carbs: 240, fat: 58 };
+
+function addDays(date: string, days: number) {
+  const value = new Date(`${date}T00:00:00`);
+  value.setDate(value.getDate() + days);
+  return value.toISOString().slice(0, 10);
+}
 function getRecentDates(endDate: string, count = 7) {
   const end = new Date(`${endDate}T00:00:00`);
   return Array.from({ length: count }, (_, index) => {
@@ -721,6 +727,50 @@ export default function Home() {
     if (editingFoodId === id) cancelEditFood();
     setMessage("Alimento excluído da sua base.");
   }
+
+  async function copyYesterdayDiary() {
+    const sourceDate = addDays(selectedDate, -1);
+    if (isCloud) {
+      const { data, error } = await supabase!.from("diary_entries").select("meal,food_name_snapshot,quantity,unit,calories_kcal,protein_g,carbs_g,fat_g").eq("diary_date", sourceDate).order("created_at");
+      if (error) return setMessage(error.message);
+      if (!data?.length) return setMessage(`Nenhum alimento encontrado em ${sourceDate} para copiar.`);
+      const payload = data.map((entry) => ({
+        user_id: session!.user.id,
+        diary_date: selectedDate,
+        meal: entry.meal,
+        food_name_snapshot: entry.food_name_snapshot,
+        quantity: entry.quantity,
+        unit: entry.unit,
+        calories_kcal: entry.calories_kcal,
+        protein_g: entry.protein_g,
+        carbs_g: entry.carbs_g,
+        fat_g: entry.fat_g
+      }));
+      const { data: inserted, error: insertError } = await supabase!.from("diary_entries").insert(payload).select("id,meal,food_name_snapshot,quantity,unit,calories_kcal,protein_g,carbs_g,fat_g");
+      if (insertError) return setMessage(insertError.message);
+      setState((current) => ({
+        ...current,
+        foodEntries: [...current.foodEntries, ...(inserted ?? []).map((entry) => ({
+          id: entry.id,
+          meal: entry.meal as Meal,
+          name: entry.food_name_snapshot,
+          quantity: Number(entry.quantity),
+          unit: entry.unit,
+          calories: Number(entry.calories_kcal),
+          protein: Number(entry.protein_g),
+          carbs: Number(entry.carbs_g),
+          fat: Number(entry.fat_g)
+        }))]
+      }));
+      setMessage(`${data.length} alimento(s) copiados de ${sourceDate}.`);
+      return;
+    }
+
+    if (!state.foodEntries.length) return setMessage("No modo local, carregue primeiro um dia com alimentos para duplicar.");
+    const copied = state.foodEntries.map((entry) => ({ ...entry, id: createId("food") }));
+    setState((current) => ({ ...current, foodEntries: [...current.foodEntries, ...copied] }));
+    setMessage(`${copied.length} alimento(s) duplicados no diário local.`);
+  }
   async function addFood(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!foodForm.name.trim() || !foodForm.calories) return;
@@ -913,7 +963,7 @@ export default function Home() {
           <article className="card stat-card span-3"><div className="card-title"><Droplets size={16} /> Água</div><div className="metric">{(totals.water / 1000).toFixed(1)}<small> L</small></div><div className="progress"><span style={{ width: `${Math.min(100, Math.round((totals.water / 2500) * 100))}%`, background: "var(--blue)" }} /></div></article>
           <article className="card stat-card span-3"><div className="card-title"><Dumbbell size={16} /> Exercícios</div><div className="metric">{totals.exercise}<small> kcal</small></div><p className="muted">Crédito configurável no diário.</p></article>
 
-          <article className="card span-7"><div className="card-title"><ClipboardList size={16} /> Diário da data</div><div className="meals">{(Object.keys(mealLabels) as Meal[]).map((meal) => { const entries = state.foodEntries.filter((entry) => entry.meal === meal); const kcal = entries.reduce((sum, entry) => sum + entry.calories, 0); return <div className="meal-block" key={meal}><div className="meal-row meal-total"><div className="meal-name">{mealLabels[meal]}</div><div className="kcal">{kcal} kcal</div></div>{entries.length === 0 ? <p className="muted compact">Nenhum item registrado.</p> : null}{entries.map((entry) => <div className="entry-row" key={entry.id}><div><div>{entry.name}</div><div className="meal-food">{entry.quantity} {entry.unit} · P {entry.protein}g · C {entry.carbs}g · G {entry.fat}g</div></div><button className="icon-button" type="button" onClick={() => deleteFood(entry.id)} aria-label={`Remover ${entry.name}`}><Trash2 size={16} /></button></div>)}</div>; })}</div></article>
+          <article className="card span-7"><div className="section-heading"><div className="card-title"><ClipboardList size={16} /> Diário da data</div><button className="secondary-action small-action" type="button" onClick={copyYesterdayDiary}>Copiar ontem</button></div><div className="meals">{(Object.keys(mealLabels) as Meal[]).map((meal) => { const entries = state.foodEntries.filter((entry) => entry.meal === meal); const kcal = entries.reduce((sum, entry) => sum + entry.calories, 0); return <div className="meal-block" key={meal}><div className="meal-row meal-total"><div className="meal-name">{mealLabels[meal]}</div><div className="kcal">{kcal} kcal</div></div>{entries.length === 0 ? <p className="muted compact">Nenhum item registrado.</p> : null}{entries.map((entry) => <div className="entry-row" key={entry.id}><div><div>{entry.name}</div><div className="meal-food">{entry.quantity} {entry.unit} · P {entry.protein}g · C {entry.carbs}g · G {entry.fat}g</div></div><button className="icon-button" type="button" onClick={() => deleteFood(entry.id)} aria-label={`Remover ${entry.name}`}><Trash2 size={16} /></button></div>)}</div>; })}</div></article>
 
           <article className="card span-5"><div className="card-title"><Beef size={16} /> Macros</div><div className="macro-grid"><div className="macro"><span>Proteína</span><strong style={{ color: "var(--green)" }}>{totals.protein}g</strong><small>meta {goalTargets.protein}g</small></div><div className="macro"><span>Carboidratos</span><strong style={{ color: "var(--blue)" }}>{totals.carbs}g</strong><small>meta {goalTargets.carbs}g</small></div><div className="macro"><span>Gorduras</span><strong style={{ color: "var(--coral)" }}>{totals.fat}g</strong><small>meta {goalTargets.fat}g</small></div></div><label className="field solo">Meta calórica diária<input type="number" value={state.calorieTarget} onChange={(event) => setState((current) => ({ ...current, calorieTarget: Number(event.target.value) || 0, fastingPlan: { ...current.fastingPlan, calorieTarget: Number(event.target.value) || 0 } }))} /></label></article>
 
