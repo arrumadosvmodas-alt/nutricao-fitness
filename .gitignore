@@ -16,3 +16,5 @@ __pycache__/
 .mypy_cache/
 .DS_Store
 
+apps/mobile/.expo/
+expo-mobile.*.log
