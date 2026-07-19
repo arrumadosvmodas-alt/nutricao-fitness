@@ -1274,3 +1274,218 @@ select {
     background: #ffffff;
   }
 }
+/* Usability polish for forms, lists and mobile rhythm */
+.card-title {
+  font-size: 15px;
+}
+
+.form-grid,
+.food-base-edit,
+.saved-meal-form {
+  border: 1px solid #e3edf8;
+  border-radius: 22px;
+  background: #f8fbff;
+  padding: 14px;
+}
+
+.external-food-search {
+  border: 1px solid #dce9f8;
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 6px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.external-food-search input {
+  border: 0;
+  background: transparent;
+  min-height: 42px;
+}
+
+.external-food-search input:focus {
+  box-shadow: none;
+}
+
+.external-food-search .secondary-action {
+  border-radius: 999px;
+  background: #0066ee;
+  color: #ffffff;
+}
+
+.external-food-search .secondary-action:hover {
+  background: #005bd4;
+  color: #ffffff;
+}
+
+.field {
+  color: #42526a;
+  letter-spacing: -0.01em;
+}
+
+input,
+select,
+textarea {
+  min-height: 44px;
+}
+
+.meal-block {
+  border: 1px solid #e3edf8;
+  padding: 14px;
+}
+
+.meal-block:last-child {
+  border-bottom: 1px solid #e3edf8;
+  padding-bottom: 14px;
+}
+
+.entry-row {
+  border-top: 1px solid #edf3fa;
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.meal-name {
+  font-size: 16px;
+}
+
+.kcal {
+  border-radius: 999px;
+  background: #eef7ff;
+  color: #005bd4;
+  padding: 5px 9px;
+}
+
+.quick-picks > div:first-child strong,
+.result-heading strong,
+.meal-name {
+  color: #13233a;
+}
+
+.quick-picks > div:first-child span {
+  text-align: right;
+}
+
+.external-results {
+  margin-top: 14px;
+}
+
+.external-result {
+  text-align: left;
+}
+
+.external-result .result-heading em,
+.result-heading em {
+  border-radius: 999px;
+  background: #eef7ff;
+  color: #005bd4;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.food-base-actions .secondary-action,
+.meal-actions .secondary-action,
+.tiny-action,
+.small-action {
+  border-radius: 999px;
+}
+
+.status-line {
+  border: 1px solid #cfe3ff;
+  border-radius: 16px;
+  background: #eef7ff;
+  color: #0f3f7b;
+  padding: 12px 14px;
+}
+
+.fasting-controls,
+.fasting-grid {
+  gap: 12px;
+}
+
+.fasting-grid > div {
+  border-color: #dce9f8;
+  background: #ffffff;
+}
+
+.safety-note {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+@media (max-width: 1100px) {
+  .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .form-grid .field.wide {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    min-height: auto;
+    padding: 16px;
+  }
+
+  .brand {
+    justify-content: center;
+  }
+
+  .nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 16px;
+  }
+
+  .nav a {
+    justify-content: center;
+    padding: 10px;
+  }
+
+  .topbar {
+    flex-direction: column;
+  }
+
+  .grid {
+    gap: 12px;
+  }
+
+  .external-food-search,
+  .inline-form {
+    grid-template-columns: 1fr;
+    border-radius: 22px;
+  }
+
+  .external-food-search .secondary-action {
+    width: 100%;
+  }
+
+  .form-grid,
+  .food-base-edit,
+  .saved-meal-form,
+  .fasting-controls,
+  .fasting-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .meal-row,
+  .entry-row,
+  .food-base-item {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .meal-actions,
+  .food-base-actions {
+    justify-content: flex-start;
+  }
+}
