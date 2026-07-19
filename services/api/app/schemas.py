@@ -41,3 +41,17 @@ class FastingGuidanceResponse(BaseModel):
     fiber_min_g: int
     guidance: list[str]
     safety_notes: list[str]
+
+class FoodSearchItem(BaseModel):
+    code: str | None = None
+    name: str
+    brand: str | None = None
+    calories_kcal_100g: float
+    protein_g_100g: float
+    carbs_g_100g: float
+    fat_g_100g: float
+    source: str = "open_food_facts"
+
+
+class FoodSearchResponse(BaseModel):
+    items: list[FoodSearchItem]

@@ -492,3 +492,38 @@ h2 {
     grid-template-columns: 1fr;
   }
 }
+
+.external-food-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.external-results {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.external-result {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.external-result span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 560px) {
+  .external-food-search {
+    grid-template-columns: 1fr;
+  }
+}

@@ -38,7 +38,8 @@ type FoodEntry = {
 type WaterEntry = { id: string; amountMl: number };
 type ExerciseEntry = { id: string; name: string; minutes: number; calories: number };
 type WeightEntry = { id: string; weightKg: number; date: string };
-type FoodOption = { id: string; name: string; brand: string | null; calories: number; protein: number; carbs: number; fat: number; unit: string };
+type FoodOption = { id: string; name: string; brand: string | null; calories: number; protein: number; carbs: number; fat: number; unit: string; per100g?: boolean };
+type ExternalFood = { code?: string; name: string; brand?: string | null; calories_kcal_100g: number; protein_g_100g: number; carbs_g_100g: number; fat_g_100g: number };
 type GoalTargets = { calories: number; protein: number; carbs: number; fat: number };
 type FastingGuidance = { fastingHours: number; eatingWindowHours: number; nextMeal: string; hydration: number; minKcal: number; maxKcal: number; protein: number; fiber: number };
 type OnboardingForm = {
@@ -243,6 +244,9 @@ export default function Home() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [authForm, setAuthForm] = useState({ email: "", password: "" });
   const [foodOptions, setFoodOptions] = useState<FoodOption[]>([]);
+  const [externalFoodQuery, setExternalFoodQuery] = useState("");
+  const [externalFoods, setExternalFoods] = useState<ExternalFood[]>([]);
+  const [selectedPer100gFood, setSelectedPer100gFood] = useState<FoodOption | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [goalTargets, setGoalTargets] = useState<GoalTargets>(defaultTargets);
@@ -296,7 +300,7 @@ export default function Home() {
 
     const [profile, foods, diary, water, exercise, weight, goals, fasting] = await Promise.all([
       supabase.from("profiles").select("full_name,birth_date,sex,height_cm,current_weight_kg,target_weight_kg,activity_level,goal").eq("id", session.user.id).maybeSingle(),
-      supabase.from("foods").select("id,name,brand,calories_kcal,protein_g,carbs_g,fat_g,serving_unit").order("name").limit(25),
+      supabase.from("foods").select("id,name,brand,calories_kcal,protein_g,carbs_g,fat_g,serving_unit,serving_size").order("name").limit(25),
       supabase.from("diary_entries").select("id,meal,food_name_snapshot,quantity,unit,calories_kcal,protein_g,carbs_g,fat_g").eq("diary_date", selectedDate).order("created_at"),
       supabase.from("water_entries").select("id,amount_ml").eq("diary_date", selectedDate).order("created_at"),
       supabase.from("exercise_entries").select("id,name,duration_minutes,calories_kcal").eq("diary_date", selectedDate).order("created_at"),
@@ -332,7 +336,8 @@ export default function Home() {
         protein: Number(item.protein_g),
         carbs: Number(item.carbs_g),
         fat: Number(item.fat_g),
-        unit: item.serving_unit
+        unit: item.serving_unit,
+        per100g: item.serving_unit === "g" && Number(item.serving_size ?? 100) === 100
       })));
     }
 
@@ -400,9 +405,58 @@ export default function Home() {
     }
   }
 
+  function applyPer100gFood(food: FoodOption, grams: number) {
+    const factor = (Number(grams) || 0) / 100;
+    setFoodForm((current) => ({
+      ...current,
+      name: food.name,
+      quantity: String(grams || 100),
+      unit: "g",
+      calories: String(Math.round(food.calories * factor)),
+      protein: String(Math.round(food.protein * factor * 10) / 10),
+      carbs: String(Math.round(food.carbs * factor * 10) / 10),
+      fat: String(Math.round(food.fat * factor * 10) / 10)
+    }));
+  }
+
+  async function searchExternalFoods(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!externalFoodQuery.trim()) return;
+    try {
+      const response = await fetch(`${apiUrl}/foods/search?q=${encodeURIComponent(externalFoodQuery.trim())}&page_size=10`);
+      if (!response.ok) throw new Error("Busca indisponível");
+      const data = await response.json();
+      setExternalFoods(data.items ?? []);
+      setMessage(`Encontrados ${(data.items ?? []).length} alimentos na base ampliada.`);
+    } catch {
+      setMessage("Não foi possível buscar na base ampliada agora.");
+    }
+  }
+
+  function chooseExternalFood(food: ExternalFood) {
+    const option: FoodOption = {
+      id: food.code || createId("external"),
+      name: food.brand ? `${food.name} - ${food.brand}` : food.name,
+      brand: food.brand ?? null,
+      calories: Number(food.calories_kcal_100g) || 0,
+      protein: Number(food.protein_g_100g) || 0,
+      carbs: Number(food.carbs_g_100g) || 0,
+      fat: Number(food.fat_g_100g) || 0,
+      unit: "g",
+      per100g: true
+    };
+    setSelectedPer100gFood(option);
+    applyPer100gFood(option, 100);
+  }
+
   function chooseFoodOption(id: string) {
     const selected = foodOptions.find((item) => item.id === id);
     if (!selected) return;
+    setSelectedPer100gFood(selected.per100g ? selected : null);
+    if (selected.per100g) {
+      applyPer100gFood(selected, 100);
+      return;
+    }
     setFoodForm((current) => ({ ...current, name: selected.name, unit: selected.unit, calories: String(selected.calories), protein: String(selected.protein), carbs: String(selected.carbs), fat: String(selected.fat) }));
   }
 
@@ -467,13 +521,13 @@ export default function Home() {
       source: "user",
       region: "BR",
       verified: false,
-      serving_size: Number(foodForm.quantity) || 1,
+      serving_size: selectedPer100gFood ? 100 : Number(foodForm.quantity) || 1,
       serving_unit: foodForm.unit.trim() || "porção",
       calories_kcal: Number(foodForm.calories) || 0,
       protein_g: Number(foodForm.protein) || 0,
       carbs_g: Number(foodForm.carbs) || 0,
       fat_g: Number(foodForm.fat) || 0
-    }).select("id,name,brand,calories_kcal,protein_g,carbs_g,fat_g,serving_unit").single();
+    }).select("id,name,brand,calories_kcal,protein_g,carbs_g,fat_g,serving_unit,serving_size").single();
 
     if (error) return setMessage(error.message);
     if (data) {
@@ -684,7 +738,7 @@ export default function Home() {
 
           <article className="card span-5"><div className="card-title">Macros</div><div className="macro-grid"><div className="macro"><span>Proteína</span><strong style={{ color: "var(--green)" }}>{totals.protein}g</strong><small>meta {goalTargets.protein}g</small></div><div className="macro"><span>Carboidratos</span><strong style={{ color: "var(--blue)" }}>{totals.carbs}g</strong><small>meta {goalTargets.carbs}g</small></div><div className="macro"><span>Gorduras</span><strong style={{ color: "var(--coral)" }}>{totals.fat}g</strong><small>meta {goalTargets.fat}g</small></div></div><label className="field solo">Meta calórica diária<input type="number" value={state.calorieTarget} onChange={(event) => setState((current) => ({ ...current, calorieTarget: Number(event.target.value) || 0, fastingPlan: { ...current.fastingPlan, calorieTarget: Number(event.target.value) || 0 } }))} /></label></article>
 
-          <article className="card span-12" id="food"><div className="card-title">Registrar alimento</div>{foodOptions.length ? <label className="field solo">Alimentos do Supabase<select defaultValue="" onChange={(event) => chooseFoodOption(event.target.value)}><option value="" disabled>Selecionar alimento da base</option>{foodOptions.map((item) => <option key={item.id} value={item.id}>{item.name}{item.brand ? ` - ${item.brand}` : ""}</option>)}</select></label> : null}<form className="form-grid" onSubmit={addFood}><label className="field wide">Alimento<input value={foodForm.name} onChange={(event) => setFoodForm({ ...foodForm, name: event.target.value })} placeholder="Ex.: arroz, feijão e frango" /></label><label className="field">Refeição<select value={foodForm.meal} onChange={(event) => setFoodForm({ ...foodForm, meal: event.target.value as Meal })}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="field">Qtd.<input type="number" value={foodForm.quantity} onChange={(event) => setFoodForm({ ...foodForm, quantity: event.target.value })} /></label><label className="field">Unidade<input value={foodForm.unit} onChange={(event) => setFoodForm({ ...foodForm, unit: event.target.value })} /></label><label className="field">Kcal<input type="number" value={foodForm.calories} onChange={(event) => setFoodForm({ ...foodForm, calories: event.target.value })} /></label><label className="field">Proteína g<input type="number" value={foodForm.protein} onChange={(event) => setFoodForm({ ...foodForm, protein: event.target.value })} /></label><label className="field">Carbo. g<input type="number" value={foodForm.carbs} onChange={(event) => setFoodForm({ ...foodForm, carbs: event.target.value })} /></label><label className="field">Gord. g<input type="number" value={foodForm.fat} onChange={(event) => setFoodForm({ ...foodForm, fat: event.target.value })} /></label><button className="primary-action" type="submit"><Plus size={18} /> Adicionar</button><button className="secondary-action" type="button" onClick={saveCustomFood}>Salvar na base</button></form></article>
+          <article className="card span-12" id="food"><div className="card-title">Registrar alimento</div><form className="external-food-search" onSubmit={searchExternalFoods}><input value={externalFoodQuery} onChange={(event) => setExternalFoodQuery(event.target.value)} placeholder="Buscar na base ampliada: iogurte, arroz, pão integral..." /><button className="secondary-action" type="submit"><Search size={18} /> Buscar</button></form>{externalFoods.length ? <div className="external-results">{externalFoods.map((item) => <button className="external-result" type="button" key={`${item.code}-${item.name}`} onClick={() => chooseExternalFood(item)}><strong>{item.name}</strong><span>{item.brand || "Open Food Facts"} · {Math.round(item.calories_kcal_100g)} kcal/100g · P {item.protein_g_100g}g · C {item.carbs_g_100g}g · G {item.fat_g_100g}g</span></button>)}</div> : null}{foodOptions.length ? <label className="field solo">Alimentos do Supabase<select defaultValue="" onChange={(event) => chooseFoodOption(event.target.value)}><option value="" disabled>Selecionar alimento da base</option>{foodOptions.map((item) => <option key={item.id} value={item.id}>{item.name}{item.brand ? ` - ${item.brand}` : ""}</option>)}</select></label> : null}<form className="form-grid" onSubmit={addFood}><label className="field wide">Alimento<input value={foodForm.name} onChange={(event) => { setSelectedPer100gFood(null); setFoodForm({ ...foodForm, name: event.target.value }); }} placeholder="Ex.: arroz, feijão e frango" /></label><label className="field">Refeição<select value={foodForm.meal} onChange={(event) => setFoodForm({ ...foodForm, meal: event.target.value as Meal })}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="field">Qtd.<input type="number" value={foodForm.quantity} onChange={(event) => { setFoodForm({ ...foodForm, quantity: event.target.value }); if (selectedPer100gFood) applyPer100gFood(selectedPer100gFood, Number(event.target.value)); }} /></label><label className="field">Unidade<input value={foodForm.unit} onChange={(event) => { setSelectedPer100gFood(null); setFoodForm({ ...foodForm, unit: event.target.value }); }} /></label><label className="field">Kcal<input type="number" value={foodForm.calories} onChange={(event) => setFoodForm({ ...foodForm, calories: event.target.value })} /></label><label className="field">Proteína g<input type="number" value={foodForm.protein} onChange={(event) => setFoodForm({ ...foodForm, protein: event.target.value })} /></label><label className="field">Carbo. g<input type="number" value={foodForm.carbs} onChange={(event) => setFoodForm({ ...foodForm, carbs: event.target.value })} /></label><label className="field">Gord. g<input type="number" value={foodForm.fat} onChange={(event) => setFoodForm({ ...foodForm, fat: event.target.value })} /></label><button className="primary-action" type="submit"><Plus size={18} /> Adicionar</button><button className="secondary-action" type="button" onClick={saveCustomFood}>Salvar na base</button></form></article>
 
           <article className="card span-4"><div className="card-title"><Droplets size={16} /> Água</div><form className="inline-form" onSubmit={addWater}><input type="number" value={waterAmount} onChange={(event) => setWaterAmount(event.target.value)} /><button className="primary-action" type="submit">ml</button></form></article>
           <article className="card span-4"><div className="card-title"><Dumbbell size={16} /> Exercício</div><form className="stack-form" onSubmit={addExercise}><input value={exerciseForm.name} onChange={(event) => setExerciseForm({ ...exerciseForm, name: event.target.value })} placeholder="Ex.: musculação" /><div className="two-cols"><input type="number" value={exerciseForm.minutes} onChange={(event) => setExerciseForm({ ...exerciseForm, minutes: event.target.value })} placeholder="min" /><input type="number" value={exerciseForm.calories} onChange={(event) => setExerciseForm({ ...exerciseForm, calories: event.target.value })} placeholder="kcal" /></div><button className="primary-action" type="submit"><Plus size={18} /> Adicionar</button><button className="secondary-action" type="button" onClick={saveCustomFood}>Salvar na base</button></form></article>
