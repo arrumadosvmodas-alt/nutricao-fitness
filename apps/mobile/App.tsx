@@ -33,6 +33,13 @@ function brDate(date: string) {
   return `${day}/${month}/${year}`;
 }
 
+function parseBrDate(value: string) {
+  const trimmed = value.trim();
+  const brMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (brMatch) return `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}`;
+  return trimmed;
+}
+
 function addDays(date: string, delta: number) {
   const value = new Date(`${date}T12:00:00`);
   value.setDate(value.getDate() + delta);
@@ -343,7 +350,9 @@ function AuthScreen({ authForm, setAuthForm, submitAuth }: { authForm: { email: 
   return <SafeAreaView style={styles.safe}><StatusBar style="dark" /><KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.authWrap}><View style={styles.logo}><Ionicons name="flame" size={28} color="#fff" /></View><Text style={styles.title}>Nutrição & Fitness</Text><Text style={styles.subtitle}>Entre para registrar alimentos, água, exercícios, jejum e progresso no app mobile.</Text>{!hasSupabaseConfig ? <Text style={styles.warning}>Configure o .env do mobile para ativar o login.</Text> : null}<TextInput style={styles.input} placeholder="E-mail" autoCapitalize="none" value={authForm.email} onChangeText={(email) => setAuthForm((current) => ({ ...current, email }))} /><TextInput style={styles.input} placeholder="Senha" secureTextEntry value={authForm.password} onChangeText={(password) => setAuthForm((current) => ({ ...current, password }))} /><Pressable style={styles.primaryButton} onPress={() => submitAuth("login")}><Text style={styles.primaryButtonText}>Entrar</Text></Pressable><Pressable style={styles.secondaryButton} onPress={() => submitAuth("signup")}><Text style={styles.secondaryButtonText}>Criar conta</Text></Pressable></KeyboardAvoidingView></SafeAreaView>;
 }
 
-function DateSwitcher({ selectedDate, setSelectedDate }: { selectedDate: string; setSelectedDate: (date: string) => void }) { return <View style={styles.dateRow}><Pressable style={styles.smallButton} onPress={() => setSelectedDate(addDays(selectedDate, -1))}><Text style={styles.smallButtonText}>← Dia anterior</Text></Pressable><TextInput style={[styles.input, styles.dateInput]} value={selectedDate} onChangeText={setSelectedDate} /><Pressable style={styles.smallButton} onPress={() => setSelectedDate(addDays(selectedDate, 1))}><Text style={styles.smallButtonText}>Próximo →</Text></Pressable></View>; }
+function DateSwitcher({ selectedDate, setSelectedDate }: { selectedDate: string; setSelectedDate: (date: string) => void }) {
+  return <View style={styles.dateRow}><Pressable style={styles.smallButton} onPress={() => setSelectedDate(addDays(selectedDate, -1))}><Text style={styles.smallButtonText}>? Dia anterior</Text></Pressable><TextInput style={[styles.input, styles.dateInput]} value={brDate(selectedDate)} onChangeText={(value) => setSelectedDate(parseBrDate(value))} placeholder="dd/mm/aaaa" /><Pressable style={styles.smallButton} onPress={() => setSelectedDate(addDays(selectedDate, 1))}><Text style={styles.smallButtonText}>Pr?ximo ?</Text></Pressable></View>;
+}
 
 function TodayScreen({ totals, remaining, waterTotal, exerciseTotal, latestWeight, entries, removeFood, startEditFood }: { totals: { calories: number; protein: number; carbs: number; fat: number }; remaining: number; waterTotal: number; exerciseTotal: number; latestWeight?: WeightEntry; entries: FoodEntry[]; removeFood: (id: string) => void; startEditFood: (entry: FoodEntry) => void }) {
   return <View><View style={styles.grid}><Metric label="Restantes" value={remaining} suffix="kcal" /><Metric label="Consumidas" value={totals.calories} suffix="kcal" /><Metric label="Água" value={waterTotal / 1000} suffix="L" decimals={1} /><Metric label="Exercícios" value={exerciseTotal} suffix="kcal" /></View><View style={styles.grid}><Metric label="Proteína" value={totals.protein} suffix="g" decimals={1} /><Metric label="Carboidratos" value={totals.carbs} suffix="g" decimals={1} /><Metric label="Gorduras" value={totals.fat} suffix="g" decimals={1} /><Metric label="Peso" value={latestWeight?.weightKg || 0} suffix="kg" decimals={1} /></View><View style={styles.card}><Text style={styles.cardTitle}>Diário alimentar</Text>{entries.length === 0 ? <Text style={styles.muted}>Nenhum alimento registrado nessa data.</Text> : null}{entries.map((entry) => <View key={entry.id} style={styles.entryRow}><View style={styles.entryContent}><Text style={styles.entryName}>{entry.name}</Text><Text style={styles.muted}>{mealLabels[entry.meal]} · {numberText(entry.quantity)}{entry.unit} · P {entry.protein}g · C {entry.carbs}g · G {entry.fat}g</Text></View><View style={styles.entryRight}><Text style={styles.kcal}>{entry.calories} kcal</Text><Pressable onPress={() => startEditFood(entry)}><Text style={styles.editText}>Editar</Text></Pressable><Pressable onPress={() => removeFood(entry.id)}><Text style={styles.deleteText}>Excluir</Text></Pressable></View></View>)}</View></View>;
