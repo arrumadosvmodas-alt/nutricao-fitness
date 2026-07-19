@@ -590,6 +590,11 @@ export default function Home() {
           {session ? <button className="secondary-action" type="button" onClick={() => supabase?.auth.signOut()}><LogOut size={18} /> Sair</button> : <button className="secondary-action" type="button" onClick={resetDemo}><RotateCcw size={18} /> Reiniciar demo</button>}
         </section>
 
+        <section className="date-panel card">
+          <label className="field">Data do diário<input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} /></label>
+          <p className="muted">Alimentos, água, exercícios e peso serão carregados e registrados para a data selecionada.</p>
+        </section>
+
         {!session ? (
           <section className="auth-panel card">
             <div>
