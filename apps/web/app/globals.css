@@ -662,3 +662,25 @@ h2 {
     grid-template-columns: 1fr 1fr;
   }
 }
+.follow-up-box {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fffaf2;
+  margin: 16px 0 12px;
+  padding: 14px;
+}
+
+.follow-up-box textarea {
+  width: 100%;
+  min-height: 170px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.5;
+  padding: 12px;
+}
