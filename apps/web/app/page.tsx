@@ -235,6 +235,7 @@ async function ensureProfile(supabase: SupabaseClient, session: Session) {
 export default function Home() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [session, setSession] = useState<Session | null>(null);
+  const [selectedDate, setSelectedDate] = useState(today);
   const [state, setState] = useState<AppState>(defaultState);
   const [ready, setReady] = useState(false);
   const [loadingRemote, setLoadingRemote] = useState(false);
@@ -285,7 +286,7 @@ export default function Home() {
   useEffect(() => {
     if (!supabase || !session) return;
     void loadRemoteData();
-  }, [supabase, session]);
+  }, [supabase, session, selectedDate]);
 
   async function loadRemoteData() {
     if (!supabase || !session) return;
@@ -296,9 +297,9 @@ export default function Home() {
     const [profile, foods, diary, water, exercise, weight, goals, fasting] = await Promise.all([
       supabase.from("profiles").select("full_name,birth_date,sex,height_cm,current_weight_kg,target_weight_kg,activity_level,goal").eq("id", session.user.id).maybeSingle(),
       supabase.from("foods").select("id,name,brand,calories_kcal,protein_g,carbs_g,fat_g,serving_unit").order("name").limit(25),
-      supabase.from("diary_entries").select("id,meal,food_name_snapshot,quantity,unit,calories_kcal,protein_g,carbs_g,fat_g").eq("diary_date", today).order("created_at"),
-      supabase.from("water_entries").select("id,amount_ml").eq("diary_date", today).order("created_at"),
-      supabase.from("exercise_entries").select("id,name,duration_minutes,calories_kcal").eq("diary_date", today).order("created_at"),
+      supabase.from("diary_entries").select("id,meal,food_name_snapshot,quantity,unit,calories_kcal,protein_g,carbs_g,fat_g").eq("diary_date", selectedDate).order("created_at"),
+      supabase.from("water_entries").select("id,amount_ml").eq("diary_date", selectedDate).order("created_at"),
+      supabase.from("exercise_entries").select("id,name,duration_minutes,calories_kcal").eq("diary_date", selectedDate).order("created_at"),
       supabase.from("weight_entries").select("id,weight_kg,measured_on").order("measured_on", { ascending: true }).limit(30),
       supabase.from("nutrition_goals").select("calories_kcal,protein_g,carbs_g,fat_g").order("created_at", { ascending: false }).limit(1),
       supabase.from("fasting_plans").select("id,protocol,last_meal_time,next_meal_time,hydration_target_ml,break_fast_min_kcal,break_fast_max_kcal,protein_min_g,active").eq("active", true).order("created_at", { ascending: false }).limit(1)
@@ -467,7 +468,7 @@ export default function Home() {
     if (isCloud) {
       const { data, error } = await supabase!.from("diary_entries").insert({
         user_id: session!.user.id,
-        diary_date: today,
+        diary_date: selectedDate,
         meal: entry.meal,
         quantity: entry.quantity,
         unit: entry.unit,
@@ -491,7 +492,7 @@ export default function Home() {
     if (!amountMl || amountMl <= 0) return;
     const entry = { id: createId("water"), amountMl };
     if (isCloud) {
-      const { data, error } = await supabase!.from("water_entries").insert({ user_id: session!.user.id, diary_date: today, amount_ml: amountMl }).select("id").single();
+      const { data, error } = await supabase!.from("water_entries").insert({ user_id: session!.user.id, diary_date: selectedDate, amount_ml: amountMl }).select("id").single();
       if (error) return setMessage(error.message);
       entry.id = data.id;
     }
@@ -503,7 +504,7 @@ export default function Home() {
     if (!exerciseForm.name.trim()) return;
     const entry = { id: createId("exercise"), name: exerciseForm.name.trim(), minutes: Number(exerciseForm.minutes) || 0, calories: Number(exerciseForm.calories) || 0 };
     if (isCloud) {
-      const { data, error } = await supabase!.from("exercise_entries").insert({ user_id: session!.user.id, diary_date: today, name: entry.name, duration_minutes: entry.minutes, calories_kcal: entry.calories }).select("id").single();
+      const { data, error } = await supabase!.from("exercise_entries").insert({ user_id: session!.user.id, diary_date: selectedDate, name: entry.name, duration_minutes: entry.minutes, calories_kcal: entry.calories }).select("id").single();
       if (error) return setMessage(error.message);
       entry.id = data.id;
     }
@@ -515,9 +516,9 @@ export default function Home() {
     event.preventDefault();
     const weightKg = Number(weightForm);
     if (!weightKg || weightKg <= 0) return;
-    const entry = { id: createId("weight"), weightKg, date: today };
+    const entry = { id: createId("weight"), weightKg, date: selectedDate };
     if (isCloud) {
-      const { data, error } = await supabase!.from("weight_entries").insert({ user_id: session!.user.id, measured_on: today, weight_kg: weightKg }).select("id").single();
+      const { data, error } = await supabase!.from("weight_entries").insert({ user_id: session!.user.id, measured_on: selectedDate, weight_kg: weightKg }).select("id").single();
       if (error) return setMessage(error.message);
       entry.id = data.id;
     }
@@ -584,7 +585,7 @@ export default function Home() {
           <div>
             <div className="eyebrow">{isCloud ? "Conectado ao Supabase" : "Modo local"}</div>
             <h1>Registre refeições, água, exercícios, peso e jejum.</h1>
-            <p className="lead">{isCloud ? `Sessão ativa para ${session?.user.email}. Os registros de hoje estão sendo salvos no Supabase.` : "Entre com sua conta para salvar no Supabase. Sem login, os dados ficam apenas neste navegador."}</p>
+            <p className="lead">{isCloud ? `Sessão ativa para ${session?.user.email}. Os registros de ${selectedDate} estão sendo salvos no Supabase.` : "Entre com sua conta para salvar no Supabase. Sem login, os dados ficam apenas neste navegador."}</p>
           </div>
           {session ? <button className="secondary-action" type="button" onClick={() => supabase?.auth.signOut()}><LogOut size={18} /> Sair</button> : <button className="secondary-action" type="button" onClick={resetDemo}><RotateCcw size={18} /> Reiniciar demo</button>}
         </section>
@@ -634,7 +635,7 @@ export default function Home() {
           <article className="card span-3"><div className="card-title">Água</div><div className="metric">{(totals.water / 1000).toFixed(1)}<small> L</small></div><div className="progress"><span style={{ width: `${Math.min(100, Math.round((totals.water / 2500) * 100))}%`, background: "var(--blue)" }} /></div></article>
           <article className="card span-3"><div className="card-title">Exercícios</div><div className="metric">{totals.exercise}<small> kcal</small></div><p className="muted">Crédito configurável no diário.</p></article>
 
-          <article className="card span-7"><div className="card-title">Diário de hoje</div><div className="meals">{(Object.keys(mealLabels) as Meal[]).map((meal) => { const entries = state.foodEntries.filter((entry) => entry.meal === meal); const kcal = entries.reduce((sum, entry) => sum + entry.calories, 0); return <div className="meal-block" key={meal}><div className="meal-row meal-total"><div className="meal-name">{mealLabels[meal]}</div><div className="kcal">{kcal} kcal</div></div>{entries.length === 0 ? <p className="muted compact">Nenhum item registrado.</p> : null}{entries.map((entry) => <div className="entry-row" key={entry.id}><div><div>{entry.name}</div><div className="meal-food">{entry.quantity} {entry.unit} · P {entry.protein}g · C {entry.carbs}g · G {entry.fat}g</div></div><button className="icon-button" type="button" onClick={() => deleteFood(entry.id)} aria-label={`Remover ${entry.name}`}><Trash2 size={16} /></button></div>)}</div>; })}</div></article>
+          <article className="card span-7"><div className="card-title">Diário da data</div><div className="meals">{(Object.keys(mealLabels) as Meal[]).map((meal) => { const entries = state.foodEntries.filter((entry) => entry.meal === meal); const kcal = entries.reduce((sum, entry) => sum + entry.calories, 0); return <div className="meal-block" key={meal}><div className="meal-row meal-total"><div className="meal-name">{mealLabels[meal]}</div><div className="kcal">{kcal} kcal</div></div>{entries.length === 0 ? <p className="muted compact">Nenhum item registrado.</p> : null}{entries.map((entry) => <div className="entry-row" key={entry.id}><div><div>{entry.name}</div><div className="meal-food">{entry.quantity} {entry.unit} · P {entry.protein}g · C {entry.carbs}g · G {entry.fat}g</div></div><button className="icon-button" type="button" onClick={() => deleteFood(entry.id)} aria-label={`Remover ${entry.name}`}><Trash2 size={16} /></button></div>)}</div>; })}</div></article>
 
           <article className="card span-5"><div className="card-title">Macros</div><div className="macro-grid"><div className="macro"><span>Proteína</span><strong style={{ color: "var(--green)" }}>{totals.protein}g</strong><small>meta {goalTargets.protein}g</small></div><div className="macro"><span>Carboidratos</span><strong style={{ color: "var(--blue)" }}>{totals.carbs}g</strong><small>meta {goalTargets.carbs}g</small></div><div className="macro"><span>Gorduras</span><strong style={{ color: "var(--coral)" }}>{totals.fat}g</strong><small>meta {goalTargets.fat}g</small></div></div><label className="field solo">Meta calórica diária<input type="number" value={state.calorieTarget} onChange={(event) => setState((current) => ({ ...current, calorieTarget: Number(event.target.value) || 0, fastingPlan: { ...current.fastingPlan, calorieTarget: Number(event.target.value) || 0 } }))} /></label></article>
 
@@ -642,7 +643,7 @@ export default function Home() {
 
           <article className="card span-4"><div className="card-title"><Droplets size={16} /> Água</div><form className="inline-form" onSubmit={addWater}><input type="number" value={waterAmount} onChange={(event) => setWaterAmount(event.target.value)} /><button className="primary-action" type="submit">ml</button></form></article>
           <article className="card span-4"><div className="card-title"><Dumbbell size={16} /> Exercício</div><form className="stack-form" onSubmit={addExercise}><input value={exerciseForm.name} onChange={(event) => setExerciseForm({ ...exerciseForm, name: event.target.value })} placeholder="Ex.: musculação" /><div className="two-cols"><input type="number" value={exerciseForm.minutes} onChange={(event) => setExerciseForm({ ...exerciseForm, minutes: event.target.value })} placeholder="min" /><input type="number" value={exerciseForm.calories} onChange={(event) => setExerciseForm({ ...exerciseForm, calories: event.target.value })} placeholder="kcal" /></div><button className="primary-action" type="submit"><Plus size={18} /> Adicionar</button></form></article>
-          <article className="card span-4" id="progress"><div className="card-title"><Scale size={16} /> Peso</div><form className="inline-form" onSubmit={addWeight}><input type="number" step="0.1" value={weightForm} onChange={(event) => setWeightForm(event.target.value)} placeholder="kg" /><button className="primary-action" type="submit">Salvar</button></form><p className="muted">Último: {state.weightEntries.at(-1)?.weightKg ?? "-"} kg</p></article>
+          <article className="card span-4" id="progress"><div className="card-title"><Scale size={16} /> Peso</div><form className="inline-form" onSubmit={addWeight}><input type="number" step="0.1" value={weightForm} onChange={(event) => setWeightForm(event.target.value)} placeholder="kg" /><button className="primary-action" type="submit">Salvar</button></form><p className="muted">Na data: {state.weightEntries.find((entry) => entry.date === selectedDate)?.weightKg ?? "-"} kg · Último: {state.weightEntries.at(-1)?.weightKg ?? "-"} kg</p></article>
 
           <article className="card span-12 fasting-card" id="fasting"><div className="fasting-header"><div><div className="card-title">Plano de jejum intermitente</div><h2>Protocolo {state.fastingPlan.protocol}: última refeição {state.fastingPlan.lastMeal}, próxima {fastingGuidance.nextMeal}</h2></div><span className="fasting-pill"><Clock3 size={16} /> {fastingGuidance.fastingHours}h jejum · {fastingGuidance.eatingWindowHours}h alimentação</span></div><div className="fasting-controls"><label className="field">Protocolo<select value={state.fastingPlan.protocol} onChange={(event) => saveFastingPlan({ ...state.fastingPlan, protocol: event.target.value as Protocol })}><option>12:12</option><option>14:10</option><option>16:8</option><option>18:6</option></select></label><label className="field">Última refeição<input type="time" value={state.fastingPlan.lastMeal} onChange={(event) => saveFastingPlan({ ...state.fastingPlan, lastMeal: event.target.value })} /></label><label className="field">Contexto<select value={state.fastingPlan.context} onChange={(event) => saveFastingPlan({ ...state.fastingPlan, context: event.target.value as Context })}><option value="work">Trabalho</option><option value="training">Treino</option><option value="hot_day">Dia quente</option><option value="rest">Repouso</option></select></label></div><div className="fasting-grid"><div><div className="fasting-label">Entre refeições</div><strong>{fastingGuidance.hydration} ml</strong><p>Meta mínima de hidratação entre a última e a próxima refeição.</p></div><div><div className="fasting-label">O que ingerir</div><strong>0 kcal</strong><p>Água, café sem açúcar, chá sem açúcar e eletrólitos sem calorias quando necessário.</p></div><div><div className="fasting-label">Próxima refeição</div><strong>{fastingGuidance.minKcal} a {fastingGuidance.maxKcal} kcal</strong><p>Com pelo menos {fastingGuidance.protein}g de proteína e {fastingGuidance.fiber}g de fibra, ajustando ao restante do diário.</p></div></div><p className="safety-note">Orientação educativa. Gestação, diabetes, histórico de transtorno alimentar, uso de medicação ou sintomas como tontura e tremor exigem avaliação profissional antes de seguir jejum.</p></article>
         </section>
