@@ -1718,3 +1718,30 @@ button:disabled {
   color: #335f91;
   font-weight: 800;
 }
+/* Admin search and duplicate warning */
+.admin-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, .35fr);
+  gap: 10px;
+  border: 1px solid #dce9f8;
+  border-radius: 18px;
+  background: #f8fbff;
+  margin-top: 14px;
+  padding: 12px;
+}
+
+.duplicate-warning {
+  border: 1px solid #fed7aa;
+  border-radius: 14px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-weight: 800;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+}
+
+@media (max-width: 760px) {
+  .admin-tools {
+    grid-template-columns: 1fr;
+  }
+}
