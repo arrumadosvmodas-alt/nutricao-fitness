@@ -39,7 +39,7 @@ type WaterEntry = { id: string; amountMl: number };
 type ExerciseEntry = { id: string; name: string; minutes: number; calories: number };
 type WeightEntry = { id: string; weightKg: number; date: string };
 type FoodSource = "open_food_facts" | "base_comum" | "user" | "supabase";
-type FoodOption = { id: string; name: string; brand: string | null; calories: number; protein: number; carbs: number; fat: number; unit: string; per100g?: boolean; source?: FoodSource };
+type FoodOption = { id: string; ownerId?: string | null; name: string; brand: string | null; calories: number; protein: number; carbs: number; fat: number; unit: string; servingSize?: number; per100g?: boolean; source?: FoodSource };
 type ExternalFood = { code?: string; name: string; brand?: string | null; calories_kcal_100g: number; protein_g_100g: number; carbs_g_100g: number; fat_g_100g: number; source?: FoodSource };
 type GoalTargets = { calories: number; protein: number; carbs: number; fat: number };
 type FastingGuidance = { fastingHours: number; eatingWindowHours: number; nextMeal: string; hydration: number; minKcal: number; maxKcal: number; protein: number; fiber: number };
@@ -255,6 +255,8 @@ export default function Home() {
   const [externalFoodQuery, setExternalFoodQuery] = useState("");
   const [externalFoods, setExternalFoods] = useState<ExternalFood[]>([]);
   const [selectedPer100gFood, setSelectedPer100gFood] = useState<FoodOption | null>(null);
+  const [editingFoodId, setEditingFoodId] = useState<string | null>(null);
+  const [foodBaseForm, setFoodBaseForm] = useState({ name: "", brand: "", servingSize: "100", unit: "g", calories: "", protein: "", carbs: "", fat: "" });
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [goalTargets, setGoalTargets] = useState<GoalTargets>(defaultTargets);
@@ -308,7 +310,7 @@ export default function Home() {
 
     const [profile, foods, diary, water, exercise, weight, goals, fasting] = await Promise.all([
       supabase.from("profiles").select("full_name,birth_date,sex,height_cm,current_weight_kg,target_weight_kg,activity_level,goal").eq("id", session.user.id).maybeSingle(),
-      supabase.from("foods").select("id,name,brand,source,calories_kcal,protein_g,carbs_g,fat_g,serving_unit,serving_size").order("name").limit(25),
+      supabase.from("foods").select("id,owner_id,name,brand,source,calories_kcal,protein_g,carbs_g,fat_g,serving_unit,serving_size").order("name").limit(100),
       supabase.from("diary_entries").select("id,meal,food_name_snapshot,quantity,unit,calories_kcal,protein_g,carbs_g,fat_g").eq("diary_date", selectedDate).order("created_at"),
       supabase.from("water_entries").select("id,amount_ml").eq("diary_date", selectedDate).order("created_at"),
       supabase.from("exercise_entries").select("id,name,duration_minutes,calories_kcal").eq("diary_date", selectedDate).order("created_at"),
@@ -338,6 +340,7 @@ export default function Home() {
     if (foods.data) {
       setFoodOptions(foods.data.map((item) => ({
         id: item.id,
+        ownerId: item.owner_id,
         name: item.name,
         brand: item.brand,
         calories: Number(item.calories_kcal),
@@ -345,6 +348,7 @@ export default function Home() {
         carbs: Number(item.carbs_g),
         fat: Number(item.fat_g),
         unit: item.serving_unit,
+        servingSize: Number(item.serving_size ?? 100),
         source: (item.source as FoodSource) ?? "supabase",
         per100g: item.serving_unit === "g" && Number(item.serving_size ?? 100) === 100
       })));
@@ -398,6 +402,7 @@ export default function Home() {
   }, [state]);
   const remaining = state.calorieTarget - totals.consumed + totals.exercise;
   const isCloud = Boolean(supabase && session);
+  const myFoodOptions = foodOptions.filter((item) => item.ownerId === session?.user.id);
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -445,6 +450,7 @@ export default function Home() {
   function chooseExternalFood(food: ExternalFood) {
     const option: FoodOption = {
       id: food.code || createId("external"),
+      ownerId: null,
       name: food.brand ? `${food.name} - ${food.brand}` : food.name,
       brand: food.brand ?? null,
       calories: Number(food.calories_kcal_100g) || 0,
@@ -452,6 +458,7 @@ export default function Home() {
       carbs: Number(food.carbs_g_100g) || 0,
       fat: Number(food.fat_g_100g) || 0,
       unit: "g",
+      servingSize: 100,
       source: food.source ?? "open_food_facts",
       per100g: true
     };
@@ -537,12 +544,13 @@ export default function Home() {
       protein_g: Number(foodForm.protein) || 0,
       carbs_g: Number(foodForm.carbs) || 0,
       fat_g: Number(foodForm.fat) || 0
-    }).select("id,name,brand,source,calories_kcal,protein_g,carbs_g,fat_g,serving_unit,serving_size").single();
+    }).select("id,owner_id,name,brand,source,calories_kcal,protein_g,carbs_g,fat_g,serving_unit,serving_size").single();
 
     if (error) return setMessage(error.message);
     if (data) {
       setFoodOptions((current) => [...current, {
         id: data.id,
+        ownerId: data.owner_id,
         name: data.name,
         brand: data.brand,
         calories: Number(data.calories_kcal),
@@ -550,11 +558,82 @@ export default function Home() {
         carbs: Number(data.carbs_g),
         fat: Number(data.fat_g),
         unit: data.serving_unit,
+        servingSize: Number(data.serving_size ?? 100),
         source: (data.source as FoodSource) ?? "user",
         per100g: data.serving_unit === "g" && Number(data.serving_size ?? 100) === 100
       }].sort((a, b) => a.name.localeCompare(b.name)));
     }
     setMessage("Alimento salvo na sua base pessoal.");
+  }
+
+  function startEditFood(food: FoodOption) {
+    setEditingFoodId(food.id);
+    setFoodBaseForm({
+      name: food.name,
+      brand: food.brand ?? "",
+      servingSize: String(food.servingSize ?? 100),
+      unit: food.unit || "g",
+      calories: String(food.calories),
+      protein: String(food.protein),
+      carbs: String(food.carbs),
+      fat: String(food.fat)
+    });
+  }
+
+  function cancelEditFood() {
+    setEditingFoodId(null);
+    setFoodBaseForm({ name: "", brand: "", servingSize: "100", unit: "g", calories: "", protein: "", carbs: "", fat: "" });
+  }
+
+  async function updateFoodBase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!isCloud || !editingFoodId) return;
+    if (!foodBaseForm.name.trim() || !foodBaseForm.calories) {
+      setMessage("Preencha nome e calorias para atualizar o alimento.");
+      return;
+    }
+
+    const payload = {
+      name: foodBaseForm.name.trim(),
+      brand: foodBaseForm.brand.trim() || null,
+      serving_size: Number(foodBaseForm.servingSize) || 100,
+      serving_unit: foodBaseForm.unit.trim() || "g",
+      calories_kcal: Number(foodBaseForm.calories) || 0,
+      protein_g: Number(foodBaseForm.protein) || 0,
+      carbs_g: Number(foodBaseForm.carbs) || 0,
+      fat_g: Number(foodBaseForm.fat) || 0
+    };
+
+    const { data, error } = await supabase!.from("foods").update(payload).eq("id", editingFoodId).select("id,owner_id,name,brand,source,calories_kcal,protein_g,carbs_g,fat_g,serving_unit,serving_size").single();
+    if (error) return setMessage(error.message);
+    if (data) {
+      setFoodOptions((current) => current.map((item) => item.id === data.id ? {
+        id: data.id,
+        ownerId: data.owner_id,
+        name: data.name,
+        brand: data.brand,
+        calories: Number(data.calories_kcal),
+        protein: Number(data.protein_g),
+        carbs: Number(data.carbs_g),
+        fat: Number(data.fat_g),
+        unit: data.serving_unit,
+        servingSize: Number(data.serving_size ?? 100),
+        source: (data.source as FoodSource) ?? "user",
+        per100g: data.serving_unit === "g" && Number(data.serving_size ?? 100) === 100
+      } : item).sort((a, b) => a.name.localeCompare(b.name)));
+    }
+    cancelEditFood();
+    setMessage("Alimento atualizado na sua base.");
+  }
+
+  async function deleteFoodBase(id: string) {
+    if (!isCloud) return;
+    if (!window.confirm("Excluir este alimento da sua base? Os registros antigos do diário serão mantidos.")) return;
+    const { error } = await supabase!.from("foods").delete().eq("id", id);
+    if (error) return setMessage(error.message);
+    setFoodOptions((current) => current.filter((item) => item.id !== id));
+    if (editingFoodId === id) cancelEditFood();
+    setMessage("Alimento excluído da sua base.");
   }
   async function addFood(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -752,6 +831,8 @@ export default function Home() {
 
           <article className="card span-12" id="food"><div className="card-title">Registrar alimento</div><form className="external-food-search" onSubmit={searchExternalFoods}><input value={externalFoodQuery} onChange={(event) => setExternalFoodQuery(event.target.value)} placeholder="Buscar na base ampliada: iogurte, arroz, pão integral..." /><button className="secondary-action" type="submit"><Search size={18} /> Buscar</button></form>{externalFoods.length ? <div className="external-results">{externalFoods.map((item) => <button className="external-result" type="button" key={`${item.code}-${item.name}`} onClick={() => chooseExternalFood(item)}><div className="result-heading"><strong>{item.name}</strong><em>{foodSourceLabel(item.source)}</em></div><span>{item.brand || foodSourceLabel(item.source)} · {Math.round(item.calories_kcal_100g)} kcal/100g · P {item.protein_g_100g}g · C {item.carbs_g_100g}g · G {item.fat_g_100g}g</span></button>)}</div> : null}{foodOptions.length ? <label className="field solo">Alimentos do Supabase<select defaultValue="" onChange={(event) => chooseFoodOption(event.target.value)}><option value="" disabled>Selecionar alimento da base</option>{foodOptions.map((item) => <option key={item.id} value={item.id}>{item.name}{item.brand ? ` - ${item.brand}` : ""} · {foodSourceLabel(item.source)}</option>)}</select></label> : null}<form className="form-grid" onSubmit={addFood}><label className="field wide">Alimento<input value={foodForm.name} onChange={(event) => { setSelectedPer100gFood(null); setFoodForm({ ...foodForm, name: event.target.value }); }} placeholder="Ex.: arroz, feijão e frango" /></label><label className="field">Refeição<select value={foodForm.meal} onChange={(event) => setFoodForm({ ...foodForm, meal: event.target.value as Meal })}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="field">Qtd.<input type="number" value={foodForm.quantity} onChange={(event) => { setFoodForm({ ...foodForm, quantity: event.target.value }); if (selectedPer100gFood) applyPer100gFood(selectedPer100gFood, Number(event.target.value)); }} /></label><label className="field">Unidade<input value={foodForm.unit} onChange={(event) => { setSelectedPer100gFood(null); setFoodForm({ ...foodForm, unit: event.target.value }); }} /></label><label className="field">Kcal<input type="number" value={foodForm.calories} onChange={(event) => setFoodForm({ ...foodForm, calories: event.target.value })} /></label><label className="field">Proteína g<input type="number" value={foodForm.protein} onChange={(event) => setFoodForm({ ...foodForm, protein: event.target.value })} /></label><label className="field">Carbo. g<input type="number" value={foodForm.carbs} onChange={(event) => setFoodForm({ ...foodForm, carbs: event.target.value })} /></label><label className="field">Gord. g<input type="number" value={foodForm.fat} onChange={(event) => setFoodForm({ ...foodForm, fat: event.target.value })} /></label><button className="primary-action" type="submit"><Plus size={18} /> Adicionar</button><button className="secondary-action" type="button" onClick={saveCustomFood}>Salvar na base</button></form></article>
 
+
+          <article className="card span-12" id="my-foods"><div className="card-title">Minha base</div><p className="muted">Alimentos salvos por você no Supabase para reutilizar, editar ou excluir.</p>{!isCloud ? <p className="muted compact">Entre na conta para gerenciar sua base pessoal.</p> : myFoodOptions.length === 0 ? <p className="muted compact">Nenhum alimento salvo ainda. Busque um alimento, ajuste a quantidade e clique em Salvar na base.</p> : <div className="food-base-list">{myFoodOptions.map((item) => <div className="food-base-item" key={item.id}>{editingFoodId === item.id ? <form className="food-base-edit" onSubmit={updateFoodBase}><label className="field wide">Nome<input value={foodBaseForm.name} onChange={(event) => setFoodBaseForm({ ...foodBaseForm, name: event.target.value })} /></label><label className="field">Marca<input value={foodBaseForm.brand} onChange={(event) => setFoodBaseForm({ ...foodBaseForm, brand: event.target.value })} /></label><label className="field">Porção<input type="number" step="0.1" value={foodBaseForm.servingSize} onChange={(event) => setFoodBaseForm({ ...foodBaseForm, servingSize: event.target.value })} /></label><label className="field">Unidade<input value={foodBaseForm.unit} onChange={(event) => setFoodBaseForm({ ...foodBaseForm, unit: event.target.value })} /></label><label className="field">Kcal<input type="number" step="0.1" value={foodBaseForm.calories} onChange={(event) => setFoodBaseForm({ ...foodBaseForm, calories: event.target.value })} /></label><label className="field">Proteína<input type="number" step="0.1" value={foodBaseForm.protein} onChange={(event) => setFoodBaseForm({ ...foodBaseForm, protein: event.target.value })} /></label><label className="field">Carbo.<input type="number" step="0.1" value={foodBaseForm.carbs} onChange={(event) => setFoodBaseForm({ ...foodBaseForm, carbs: event.target.value })} /></label><label className="field">Gord.<input type="number" step="0.1" value={foodBaseForm.fat} onChange={(event) => setFoodBaseForm({ ...foodBaseForm, fat: event.target.value })} /></label><button className="primary-action" type="submit">Salvar edição</button><button className="secondary-action" type="button" onClick={cancelEditFood}>Cancelar</button></form> : <><div><div className="result-heading"><strong>{item.name}</strong><em>{foodSourceLabel(item.source)}</em></div><p className="muted compact">{item.brand ? `${item.brand} · ` : ""}{item.calories} kcal/{item.servingSize ?? 100}{item.unit} · P {item.protein}g · C {item.carbs}g · G {item.fat}g</p></div><div className="food-base-actions"><button className="secondary-action" type="button" onClick={() => chooseFoodOption(item.id)}>Usar</button><button className="secondary-action" type="button" onClick={() => startEditFood(item)}>Editar</button><button className="icon-button" type="button" onClick={() => deleteFoodBase(item.id)} aria-label={`Excluir ${item.name}`}><Trash2 size={16} /></button></div></>}</div>)}</div>}</article>
           <article className="card span-4"><div className="card-title"><Droplets size={16} /> Água</div><form className="inline-form" onSubmit={addWater}><input type="number" value={waterAmount} onChange={(event) => setWaterAmount(event.target.value)} /><button className="primary-action" type="submit">ml</button></form></article>
           <article className="card span-4"><div className="card-title"><Dumbbell size={16} /> Exercício</div><form className="stack-form" onSubmit={addExercise}><input value={exerciseForm.name} onChange={(event) => setExerciseForm({ ...exerciseForm, name: event.target.value })} placeholder="Ex.: musculação" /><div className="two-cols"><input type="number" value={exerciseForm.minutes} onChange={(event) => setExerciseForm({ ...exerciseForm, minutes: event.target.value })} placeholder="min" /><input type="number" value={exerciseForm.calories} onChange={(event) => setExerciseForm({ ...exerciseForm, calories: event.target.value })} placeholder="kcal" /></div><button className="primary-action" type="submit"><Plus size={18} /> Adicionar</button></form></article>
           <article className="card span-4" id="progress"><div className="card-title"><Scale size={16} /> Peso</div><form className="inline-form" onSubmit={addWeight}><input type="number" step="0.1" value={weightForm} onChange={(event) => setWeightForm(event.target.value)} placeholder="kg" /><button className="primary-action" type="submit">Salvar</button></form><p className="muted">Na data: {state.weightEntries.find((entry) => entry.date === selectedDate)?.weightKg ?? "-"} kg · Último: {state.weightEntries.at(-1)?.weightKg ?? "-"} kg</p></article>

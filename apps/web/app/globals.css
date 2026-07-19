@@ -546,3 +546,45 @@ h2 {
   padding: 3px 8px;
   white-space: nowrap;
 }
+.food-base-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.food-base-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px;
+}
+
+.food-base-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.food-base-edit {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 760px) {
+  .food-base-item,
+  .food-base-edit {
+    grid-template-columns: 1fr;
+  }
+
+  .food-base-actions {
+    justify-content: flex-start;
+  }
+}
