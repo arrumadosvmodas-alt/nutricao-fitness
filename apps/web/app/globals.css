@@ -793,3 +793,21 @@ select {
   border-color: #a8d4b8;
   box-shadow: var(--shadow-soft);
 }
+.meal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tiny-action {
+  min-height: 28px;
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+.meal-chip {
+  background: #fff6e6;
+  border-color: #efd8ac;
+}
