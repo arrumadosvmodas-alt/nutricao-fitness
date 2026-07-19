@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -1062,8 +1062,13 @@ export default function Home() {
           {session ? <button className="secondary-action" type="button" onClick={() => supabase?.auth.signOut()}><LogOut size={18} /> Sair</button> : <button className="secondary-action" type="button" onClick={resetDemo}><RotateCcw size={18} /> Reiniciar demo</button>}
         </section>
 
-        <section className="date-panel card">
-          <label className="field">Data do diário<input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} /></label>
+        <section className="date-panel card analytics-toolbar">
+          <label className="field date-field">Data do diário<input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} /></label>
+          <div className="toolbar-insights" aria-label="Contexto do painel">
+            <span><strong>{selectedDate}</strong><small>Período ativo</small></span>
+            <span><strong>{isCloud ? "Supabase" : "Local"}</strong><small>Origem dos dados</small></span>
+            <span><strong>{state.foodEntries.length}</strong><small>Itens registrados</small></span>
+          </div>
           <p className="muted">Alimentos, água, exercícios e peso serão carregados e registrados para a data selecionada.</p>
         </section>
 

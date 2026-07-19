@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   color-scheme: light;
   --bg: #f7f4ee;
   --panel: #fffdf8;
@@ -821,6 +821,204 @@ select {
 
 @media (max-width: 760px) {
   .saved-meal-form {
+    grid-template-columns: 1fr;
+  }
+}
+/* Analytics dashboard polish inspired by SaaS overview layouts */
+body {
+  background:
+    radial-gradient(circle at 18% -8%, rgba(37, 122, 82, 0.16), transparent 32%),
+    linear-gradient(135deg, #f7f4ee 0%, #fbfaf5 46%, #f1f5ef 100%);
+}
+
+.sidebar {
+  border-right: 0;
+  background: linear-gradient(180deg, #102318 0%, #143421 62%, #f8f4eb 62.2%, #fffaf0 100%);
+  box-shadow: 18px 0 55px rgba(16, 35, 24, 0.08);
+}
+
+.brand {
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+.brand-mark {
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.nav a {
+  border: 1px solid transparent;
+  border-radius: 14px;
+  color: rgba(255, 255, 255, 0.78);
+  transition: background .18s ease, color .18s ease, transform .18s ease, border-color .18s ease;
+}
+
+.nav a.active,
+.nav a:hover {
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  transform: translateX(2px);
+}
+
+.main {
+  padding: 30px clamp(18px, 3vw, 38px);
+}
+
+.topbar {
+  border: 1px solid rgba(222, 216, 204, 0.8);
+  border-radius: 28px;
+  background: linear-gradient(135deg, rgba(255, 253, 248, 0.96), rgba(247, 251, 248, 0.92));
+  box-shadow: var(--shadow-soft);
+  padding: clamp(20px, 3vw, 30px);
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #cfe3d5;
+  border-radius: 999px;
+  background: #edf8f1;
+  color: var(--green);
+  padding: 6px 10px;
+}
+
+.analytics-toolbar {
+  display: grid;
+  grid-template-columns: minmax(210px, 260px) 1fr;
+  align-items: end;
+  gap: 16px;
+}
+
+.analytics-toolbar > .muted {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.date-field {
+  margin: 0;
+}
+
+.toolbar-insights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.toolbar-insights span {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #e5ded0;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 11px 12px;
+  box-shadow: 0 8px 18px rgba(23, 33, 27, 0.04);
+}
+
+.toolbar-insights strong {
+  font-size: 15px;
+}
+
+.toolbar-insights small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.card {
+  border-radius: 20px;
+  background: rgba(255, 253, 248, 0.94);
+  box-shadow: 0 10px 30px rgba(23, 33, 27, 0.05);
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.card:hover {
+  border-color: #cfdcca;
+  transform: translateY(-1px);
+}
+
+.stat-card {
+  min-height: 152px;
+  border-top: 4px solid rgba(37, 122, 82, 0.45);
+}
+
+.stat-card:nth-child(2) { border-top-color: rgba(180, 122, 31, 0.55); }
+.stat-card:nth-child(3) { border-top-color: rgba(35, 92, 145, 0.5); }
+.stat-card:nth-child(4) { border-top-color: rgba(201, 95, 67, 0.5); }
+
+.card-title {
+  color: #536159;
+  letter-spacing: -0.01em;
+}
+
+.metric {
+  letter-spacing: -0.04em;
+}
+
+.primary-action,
+.secondary-action,
+.icon-button,
+input,
+select,
+textarea {
+  border-radius: 14px;
+}
+
+.primary-action,
+.secondary-action,
+.icon-button,
+.quick-chip,
+.external-result {
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+}
+
+.primary-action:hover,
+.secondary-action:hover,
+.icon-button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #8bb99c;
+  box-shadow: 0 0 0 4px rgba(37, 122, 82, 0.12);
+  outline: none;
+}
+
+.report-summary > div,
+.quick-picks,
+.follow-up-box,
+.food-base-item,
+.meal-block,
+.external-result {
+  border-radius: 18px;
+}
+
+.report-bar {
+  background: linear-gradient(180deg, #eee8db, #f8f4eb);
+}
+
+.report-bar span {
+  background: linear-gradient(180deg, #257a52, #99d0aa);
+}
+
+@media (max-width: 980px) {
+  .analytics-toolbar {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .sidebar {
+    background: #102318;
+  }
+
+  .toolbar-insights {
     grid-template-columns: 1fr;
   }
 }
