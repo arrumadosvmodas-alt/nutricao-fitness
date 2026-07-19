@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "NutriÃ§Ã£o & Fitness",
+    "name": "Nutrição & Fitness",
     "slug": "nutricao-fitness",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -23,7 +23,7 @@
       [
         "expo-barcode-scanner",
         {
-          "cameraPermission": "Permita acessar a cÃ¢mera para escanear cÃ³digos de barras dos alimentos."
+          "cameraPermission": "Permita acessar a câmera para escanear códigos de barras dos alimentos."
         }
       ]
     ]

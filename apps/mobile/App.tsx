@@ -1,76 +1,109 @@
-﻿import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { BarCodeScanner } from "expo-barcode-scanner";
 import { StatusBar } from "expo-status-bar";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import type { Session } from "@supabase/supabase-js";
 
-import { findFoodByBarcode, type BarcodeFood } from "./src/lib/api";
+import { findFoodByBarcode, getFastingGuidance, searchFoods, type ApiFood, type BarcodeFood, type FastingGuidance } from "./src/lib/api";
 import { hasSupabaseConfig, supabase } from "./src/lib/supabase";
 
 type Screen = "today" | "log" | "scanner" | "fasting" | "progress";
 type Meal = "breakfast" | "lunch" | "dinner" | "snack";
+type Protocol = "12:12" | "14:10" | "16:8" | "18:6";
+type FastContext = "normal" | "training" | "hot_day";
 
-type FoodEntry = {
-  id: string;
-  meal: Meal;
-  name: string;
-  quantity: number;
-  unit: string;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-};
+type FoodEntry = { id: string; date: string; meal: Meal; name: string; quantity: number; unit: string; calories: number; protein: number; carbs: number; fat: number };
+type WaterEntry = { id: string; date: string; amountMl: number };
+type ExerciseEntry = { id: string; date: string; name: string; minutes: number; calories: number };
+type WeightEntry = { id: string; date: string; weightKg: number };
+type FastingSession = { id: string; protocol: Protocol; startedAt: string; endedAt?: string };
+type StoredState = { foods: FoodEntry[]; water: WaterEntry[]; exercises: ExerciseEntry[]; weights: WeightEntry[]; fasting: FastingSession[] };
 
-const mealLabels: Record<Meal, string> = {
-  breakfast: "CafÃ©",
-  lunch: "AlmoÃ§o",
-  dinner: "Jantar",
-  snack: "Lanche"
-};
-
+const mealLabels: Record<Meal, string> = { breakfast: "Café", lunch: "Almoço", dinner: "Jantar", snack: "Lanche" };
+const protocolHours: Record<Protocol, number> = { "12:12": 12, "14:10": 14, "16:8": 16, "18:6": 18 };
+const todayIso = () => new Date().toISOString().slice(0, 10);
+const storageKey = (email?: string) => `nutricao-fitness-mobile:${email || "local"}`;
 const emptyFoodForm = { meal: "lunch" as Meal, name: "", quantity: "100", unit: "g", calories: "", protein: "", carbs: "", fat: "" };
+const emptyState: StoredState = { foods: [], water: [], exercises: [], weights: [], fasting: [] };
+
+function brDate(date: string) {
+  const [year, month, day] = date.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+function addDays(date: string, delta: number) {
+  const value = new Date(`${date}T12:00:00`);
+  value.setDate(value.getDate() + delta);
+  return value.toISOString().slice(0, 10);
+}
+
+function numberText(value: number, decimals = 0) {
+  return value.toLocaleString("pt-BR", { maximumFractionDigits: decimals, minimumFractionDigits: decimals });
+}
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
   const [authForm, setAuthForm] = useState({ email: "", password: "" });
   const [screen, setScreen] = useState<Screen>("today");
-  const [foodEntries, setFoodEntries] = useState<FoodEntry[]>([]);
+  const [selectedDate, setSelectedDate] = useState(todayIso());
+  const [store, setStore] = useState<StoredState>(emptyState);
   const [foodForm, setFoodForm] = useState(emptyFoodForm);
+  const [query, setQuery] = useState("");
+  const [foodOptions, setFoodOptions] = useState<ApiFood[]>([]);
+  const [searching, setSearching] = useState(false);
   const [scannedFood, setScannedFood] = useState<BarcodeFood | null>(null);
   const [scannerPermission, setScannerPermission] = useState<boolean | null>(null);
   const [scanLocked, setScanLocked] = useState(false);
+  const [waterMl, setWaterMl] = useState("250");
+  const [exerciseForm, setExerciseForm] = useState({ name: "Caminhada", minutes: "30", calories: "120" });
+  const [weightKg, setWeightKg] = useState("");
+  const [fastPlan, setFastPlan] = useState({ protocol: "16:8" as Protocol, weightKg: "70", calorieTarget: "2100", context: "normal" as FastContext });
+  const [guidance, setGuidance] = useState<FastingGuidance | null>(null);
 
   useEffect(() => {
-    if (!supabase) {
-      setLoadingSession(false);
-      return;
-    }
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoadingSession(false);
-    });
+    if (!supabase) { setLoadingSession(false); return; }
+    supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoadingSession(false); });
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));
     return () => data.subscription.unsubscribe();
   }, []);
 
-  const totals = useMemo(() => foodEntries.reduce((acc, entry) => ({
+  useEffect(() => {
+    AsyncStorage.getItem(storageKey(session?.user.email)).then((value) => {
+      if (value) setStore(JSON.parse(value));
+    }).catch(() => undefined);
+  }, [session?.user.email]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(storageKey(session?.user.email), JSON.stringify(store)).catch(() => undefined);
+  }, [store, session?.user.email]);
+
+  const dayFoods = store.foods.filter((item) => item.date === selectedDate);
+  const dayWater = store.water.filter((item) => item.date === selectedDate);
+  const dayExercises = store.exercises.filter((item) => item.date === selectedDate);
+  const latestWeight = [...store.weights].sort((a, b) => b.date.localeCompare(a.date))[0];
+  const activeFast = store.fasting.find((item) => !item.endedAt);
+
+  const totals = useMemo(() => dayFoods.reduce((acc, entry) => ({
     calories: acc.calories + entry.calories,
     protein: acc.protein + entry.protein,
     carbs: acc.carbs + entry.carbs,
     fat: acc.fat + entry.fat
-  }), { calories: 0, protein: 0, carbs: 0, fat: 0 }), [foodEntries]);
+  }), { calories: 0, protein: 0, carbs: 0, fat: 0 }), [dayFoods]);
+  const waterTotal = dayWater.reduce((sum, item) => sum + item.amountMl, 0);
+  const exerciseTotal = dayExercises.reduce((sum, item) => sum + item.calories, 0);
+  const remaining = 2100 - totals.calories + exerciseTotal;
 
   async function submitAuth(mode: "login" | "signup") {
-    if (!supabase) return Alert.alert("ConfiguraÃ§Ã£o pendente", "Configure o .env do app mobile com Supabase.");
+    if (!supabase) return Alert.alert("Configuração pendente", "Configure o .env do app mobile com Supabase.");
     const action = mode === "login" ? supabase.auth.signInWithPassword(authForm) : supabase.auth.signUp(authForm);
     const { error } = await action;
     if (error) Alert.alert("Acesso", error.message);
   }
 
-  function applyBarcodeFood(food: BarcodeFood) {
+  function applyApiFood(food: ApiFood) {
     setScannedFood(food);
     setFoodForm({
       ...emptyFoodForm,
@@ -80,7 +113,12 @@ export default function App() {
       carbs: String(Math.round((food.carbs_g_100g || 0) * 10) / 10),
       fat: String(Math.round((food.fat_g_100g || 0) * 10) / 10)
     });
-    setScreen("log");
+  }
+
+  async function doSearch() {
+    if (!query.trim()) return;
+    setSearching(true);
+    try { setFoodOptions(await searchFoods(query.trim())); } finally { setSearching(false); }
   }
 
   async function handleBarcode(code: string) {
@@ -88,16 +126,10 @@ export default function App() {
     setScanLocked(true);
     try {
       const food = await findFoodByBarcode(code);
-      if (!food) {
-        Alert.alert("Produto nÃ£o encontrado", `CÃ³digo: ${code}`);
-        setScanLocked(false);
-        return;
-      }
-      applyBarcodeFood(food);
-    } catch {
-      Alert.alert("Erro", "NÃ£o foi possÃ­vel consultar o produto agora.");
-      setScanLocked(false);
-    }
+      if (!food) { Alert.alert("Produto não encontrado", `Código: ${code}`); setScanLocked(false); return; }
+      applyApiFood(food);
+      setScreen("log");
+    } catch { Alert.alert("Erro", "Não foi possível consultar o produto agora."); setScanLocked(false); }
   }
 
   async function openScanner() {
@@ -109,135 +141,65 @@ export default function App() {
 
   function addFood() {
     if (!foodForm.name.trim() || !foodForm.calories) return Alert.alert("Alimento", "Preencha nome e calorias.");
-    const quantity = Number(foodForm.quantity) || 100;
-    const factor = foodForm.unit === "g" ? quantity / 100 : 1;
-    setFoodEntries((current) => [...current, {
-      id: `${Date.now()}`,
-      meal: foodForm.meal,
-      name: foodForm.name.trim(),
-      quantity,
-      unit: foodForm.unit.trim() || "g",
-      calories: Math.round((Number(foodForm.calories) || 0) * factor),
-      protein: Math.round((Number(foodForm.protein) || 0) * factor * 10) / 10,
-      carbs: Math.round((Number(foodForm.carbs) || 0) * factor * 10) / 10,
-      fat: Math.round((Number(foodForm.fat) || 0) * factor * 10) / 10
-    }]);
-    setScannedFood(null);
-    setFoodForm(emptyFoodForm);
-    setScreen("today");
+    const quantity = Number(foodForm.quantity.replace(",", ".")) || 100;
+    const factor = foodForm.unit.toLowerCase() === "g" || foodForm.unit.toLowerCase() === "ml" ? quantity / 100 : 1;
+    setStore((current) => ({ ...current, foods: [...current.foods, {
+      id: `${Date.now()}`, date: selectedDate, meal: foodForm.meal, name: foodForm.name.trim(), quantity, unit: foodForm.unit.trim() || "g",
+      calories: Math.round((Number(foodForm.calories.replace(",", ".")) || 0) * factor),
+      protein: Math.round((Number(foodForm.protein.replace(",", ".")) || 0) * factor * 10) / 10,
+      carbs: Math.round((Number(foodForm.carbs.replace(",", ".")) || 0) * factor * 10) / 10,
+      fat: Math.round((Number(foodForm.fat.replace(",", ".")) || 0) * factor * 10) / 10
+    }] }));
+    setScannedFood(null); setFoodForm(emptyFoodForm); setScreen("today");
   }
 
-  if (loadingSession) {
-    return <SafeAreaView style={styles.center}><ActivityIndicator color="#0066ee" /></SafeAreaView>;
-  }
+  function removeFood(id: string) { setStore((current) => ({ ...current, foods: current.foods.filter((item) => item.id !== id) })); }
+  function addWater(amount = Number(waterMl) || 250) { setStore((current) => ({ ...current, water: [...current.water, { id: `${Date.now()}`, date: selectedDate, amountMl: amount }] })); }
+  function addExercise() { setStore((current) => ({ ...current, exercises: [...current.exercises, { id: `${Date.now()}`, date: selectedDate, name: exerciseForm.name || "Exercício", minutes: Number(exerciseForm.minutes) || 0, calories: Number(exerciseForm.calories) || 0 }] })); }
+  function addWeight() { const value = Number(weightKg.replace(",", ".")); if (!value) return; setStore((current) => ({ ...current, weights: [...current.weights, { id: `${Date.now()}`, date: selectedDate, weightKg: value }] })); setWeightKg(""); }
+  function toggleFast() { setStore((current) => activeFast ? ({ ...current, fasting: current.fasting.map((item) => item.id === activeFast.id ? { ...item, endedAt: new Date().toISOString() } : item) }) : ({ ...current, fasting: [...current.fasting, { id: `${Date.now()}`, protocol: fastPlan.protocol, startedAt: new Date().toISOString() }] })); }
+  async function loadGuidance() { const data = await getFastingGuidance({ protocol: fastPlan.protocol, weight_kg: Number(fastPlan.weightKg) || 70, calorie_target: Number(fastPlan.calorieTarget) || 2100, context: fastPlan.context }); setGuidance(data); }
 
-  if (!session) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <StatusBar style="dark" />
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.authWrap}>
-          <View style={styles.logo}><Ionicons name="flame" size={28} color="#fff" /></View>
-          <Text style={styles.title}>NutriÃ§Ã£o & Fitness</Text>
-          <Text style={styles.subtitle}>Entre para registrar alimentos, jejum e progresso no app mobile.</Text>
-          {!hasSupabaseConfig ? <Text style={styles.warning}>Configure o .env do mobile para ativar o login.</Text> : null}
-          <TextInput style={styles.input} placeholder="E-mail" autoCapitalize="none" value={authForm.email} onChangeText={(email) => setAuthForm((current) => ({ ...current, email }))} />
-          <TextInput style={styles.input} placeholder="Senha" secureTextEntry value={authForm.password} onChangeText={(password) => setAuthForm((current) => ({ ...current, password }))} />
-          <Pressable style={styles.primaryButton} onPress={() => submitAuth("login")}><Text style={styles.primaryButtonText}>Entrar</Text></Pressable>
-          <Pressable style={styles.secondaryButton} onPress={() => submitAuth("signup")}><Text style={styles.secondaryButtonText}>Criar conta</Text></Pressable>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    );
-  }
+  if (loadingSession) return <SafeAreaView style={styles.center}><ActivityIndicator color="#0066ee" /></SafeAreaView>;
+  if (!session) return <AuthScreen authForm={authForm} setAuthForm={setAuthForm} submitAuth={submitAuth} />;
 
-  return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar style="dark" />
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.eyebrow}>Mobile MVP</Text>
-            <Text style={styles.title}>Hoje</Text>
-            <Text style={styles.subtitle}>{session.user.email}</Text>
-          </View>
-          <Pressable style={styles.iconButton} onPress={() => supabase?.auth.signOut()}><Ionicons name="log-out-outline" size={22} color="#12355f" /></Pressable>
-        </View>
-
-        {screen === "today" ? <TodayScreen totals={totals} entries={foodEntries} /> : null}
-        {screen === "log" ? <LogScreen foodForm={foodForm} setFoodForm={setFoodForm} scannedFood={scannedFood} addFood={addFood} /> : null}
-        {screen === "scanner" ? <ScannerScreen scannerPermission={scannerPermission} scanLocked={scanLocked} openScanner={openScanner} handleBarcode={handleBarcode} /> : null}
-        {screen === "fasting" ? <Placeholder title="Jejum" text="PrÃ³xima etapa: sincronizar timer e histÃ³rico do web." /> : null}
-        {screen === "progress" ? <Placeholder title="Progresso" text="Peso, Ã¡gua e relatÃ³rios entrarÃ£o nas prÃ³ximas telas mobile." /> : null}
-      </ScrollView>
-
-      <View style={styles.tabBar}>
-        <Tab icon="today-outline" label="Hoje" active={screen === "today"} onPress={() => setScreen("today")} />
-        <Tab icon="add-circle-outline" label="Registrar" active={screen === "log"} onPress={() => setScreen("log")} />
-        <Tab icon="barcode-outline" label="Scanner" active={screen === "scanner"} onPress={openScanner} />
-        <Tab icon="time-outline" label="Jejum" active={screen === "fasting"} onPress={() => setScreen("fasting")} />
-        <Tab icon="scale-outline" label="Progresso" active={screen === "progress"} onPress={() => setScreen("progress")} />
-      </View>
-    </SafeAreaView>
-  );
+  return <SafeAreaView style={styles.safe}><StatusBar style="dark" /><ScrollView contentContainerStyle={styles.content}>
+    <View style={styles.header}><View><Text style={styles.eyebrow}>Nutrição & Fitness</Text><Text style={styles.title}>Hoje</Text><Text style={styles.subtitle}>{brDate(selectedDate)} · {session.user.email}</Text></View><Pressable style={styles.iconButton} onPress={() => supabase?.auth.signOut()}><Ionicons name="log-out-outline" size={22} color="#12355f" /></Pressable></View>
+    <DateSwitcher selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
+    {screen === "today" ? <TodayScreen totals={totals} remaining={remaining} waterTotal={waterTotal} exerciseTotal={exerciseTotal} latestWeight={latestWeight} entries={dayFoods} removeFood={removeFood} /> : null}
+    {screen === "log" ? <LogScreen foodForm={foodForm} setFoodForm={setFoodForm} scannedFood={scannedFood} addFood={addFood} query={query} setQuery={setQuery} foodOptions={foodOptions} searching={searching} doSearch={doSearch} applyApiFood={applyApiFood} /> : null}
+    {screen === "scanner" ? <ScannerScreen scannerPermission={scannerPermission} scanLocked={scanLocked} openScanner={openScanner} handleBarcode={handleBarcode} /> : null}
+    {screen === "fasting" ? <FastingScreen activeFast={activeFast} fastPlan={fastPlan} setFastPlan={setFastPlan} guidance={guidance} toggleFast={toggleFast} loadGuidance={loadGuidance} /> : null}
+    {screen === "progress" ? <ProgressScreen waterMl={waterMl} setWaterMl={setWaterMl} addWater={addWater} exerciseForm={exerciseForm} setExerciseForm={setExerciseForm} addExercise={addExercise} weightKg={weightKg} setWeightKg={setWeightKg} addWeight={addWeight} weights={store.weights} exercises={dayExercises} waterTotal={waterTotal} /> : null}
+  </ScrollView><View style={styles.tabBar}><Tab icon="today-outline" label="Hoje" active={screen === "today"} onPress={() => setScreen("today")} /><Tab icon="add-circle-outline" label="Registrar" active={screen === "log"} onPress={() => setScreen("log")} /><Tab icon="barcode-outline" label="Scanner" active={screen === "scanner"} onPress={openScanner} /><Tab icon="time-outline" label="Jejum" active={screen === "fasting"} onPress={() => setScreen("fasting")} /><Tab icon="scale-outline" label="Progresso" active={screen === "progress"} onPress={() => setScreen("progress")} /></View></SafeAreaView>;
 }
 
-function TodayScreen({ totals, entries }: { totals: { calories: number; protein: number; carbs: number; fat: number }; entries: FoodEntry[] }) {
-  return <View><View style={styles.grid}><Metric label="Calorias" value={totals.calories} suffix="kcal" /><Metric label="ProteÃ­na" value={totals.protein} suffix="g" /><Metric label="Carbo." value={totals.carbs} suffix="g" /><Metric label="Gord." value={totals.fat} suffix="g" /></View><View style={styles.card}><Text style={styles.cardTitle}>DiÃ¡rio</Text>{entries.length === 0 ? <Text style={styles.muted}>Nenhum alimento registrado hoje.</Text> : null}{entries.map((entry) => <View key={entry.id} style={styles.entryRow}><View><Text style={styles.entryName}>{entry.name}</Text><Text style={styles.muted}>{mealLabels[entry.meal]} Â· {entry.quantity}{entry.unit} Â· P {entry.protein}g Â· C {entry.carbs}g Â· G {entry.fat}g</Text></View><Text style={styles.kcal}>{entry.calories} kcal</Text></View>)}</View></View>;
+function AuthScreen({ authForm, setAuthForm, submitAuth }: { authForm: { email: string; password: string }; setAuthForm: Dispatch<SetStateAction<{ email: string; password: string }>>; submitAuth: (mode: "login" | "signup") => void }) {
+  return <SafeAreaView style={styles.safe}><StatusBar style="dark" /><KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.authWrap}><View style={styles.logo}><Ionicons name="flame" size={28} color="#fff" /></View><Text style={styles.title}>Nutrição & Fitness</Text><Text style={styles.subtitle}>Entre para registrar alimentos, água, exercícios, jejum e progresso no app mobile.</Text>{!hasSupabaseConfig ? <Text style={styles.warning}>Configure o .env do mobile para ativar o login.</Text> : null}<TextInput style={styles.input} placeholder="E-mail" autoCapitalize="none" value={authForm.email} onChangeText={(email) => setAuthForm((current) => ({ ...current, email }))} /><TextInput style={styles.input} placeholder="Senha" secureTextEntry value={authForm.password} onChangeText={(password) => setAuthForm((current) => ({ ...current, password }))} /><Pressable style={styles.primaryButton} onPress={() => submitAuth("login")}><Text style={styles.primaryButtonText}>Entrar</Text></Pressable><Pressable style={styles.secondaryButton} onPress={() => submitAuth("signup")}><Text style={styles.secondaryButtonText}>Criar conta</Text></Pressable></KeyboardAvoidingView></SafeAreaView>;
 }
 
-function LogScreen({ foodForm, setFoodForm, scannedFood, addFood }: { foodForm: typeof emptyFoodForm; setFoodForm: Dispatch<SetStateAction<typeof emptyFoodForm>>; scannedFood: BarcodeFood | null; addFood: () => void }) {
-  return <View style={styles.card}><Text style={styles.cardTitle}>Registrar alimento</Text>{scannedFood ? <Text style={styles.success}>Produto lido pelo cÃ³digo de barras.</Text> : null}<TextInput style={styles.input} placeholder="Alimento" value={foodForm.name} onChangeText={(name) => setFoodForm((current) => ({ ...current, name }))} /><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Quantidade" keyboardType="numeric" value={foodForm.quantity} onChangeText={(quantity) => setFoodForm((current) => ({ ...current, quantity }))} /><TextInput style={[styles.input, styles.flex]} placeholder="Unidade" value={foodForm.unit} onChangeText={(unit) => setFoodForm((current) => ({ ...current, unit }))} /></View><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Kcal/100g" keyboardType="numeric" value={foodForm.calories} onChangeText={(calories) => setFoodForm((current) => ({ ...current, calories }))} /><TextInput style={[styles.input, styles.flex]} placeholder="ProteÃ­na" keyboardType="numeric" value={foodForm.protein} onChangeText={(protein) => setFoodForm((current) => ({ ...current, protein }))} /></View><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Carbo." keyboardType="numeric" value={foodForm.carbs} onChangeText={(carbs) => setFoodForm((current) => ({ ...current, carbs }))} /><TextInput style={[styles.input, styles.flex]} placeholder="Gord." keyboardType="numeric" value={foodForm.fat} onChangeText={(fat) => setFoodForm((current) => ({ ...current, fat }))} /></View><Pressable style={styles.primaryButton} onPress={addFood}><Text style={styles.primaryButtonText}>Adicionar ao diÃ¡rio</Text></Pressable></View>;
+function DateSwitcher({ selectedDate, setSelectedDate }: { selectedDate: string; setSelectedDate: (date: string) => void }) { return <View style={styles.dateRow}><Pressable style={styles.smallButton} onPress={() => setSelectedDate(addDays(selectedDate, -1))}><Text style={styles.smallButtonText}>← Dia anterior</Text></Pressable><TextInput style={[styles.input, styles.dateInput]} value={selectedDate} onChangeText={setSelectedDate} /><Pressable style={styles.smallButton} onPress={() => setSelectedDate(addDays(selectedDate, 1))}><Text style={styles.smallButtonText}>Próximo →</Text></Pressable></View>; }
+
+function TodayScreen({ totals, remaining, waterTotal, exerciseTotal, latestWeight, entries, removeFood }: { totals: { calories: number; protein: number; carbs: number; fat: number }; remaining: number; waterTotal: number; exerciseTotal: number; latestWeight?: WeightEntry; entries: FoodEntry[]; removeFood: (id: string) => void }) {
+  return <View><View style={styles.grid}><Metric label="Restantes" value={remaining} suffix="kcal" /><Metric label="Consumidas" value={totals.calories} suffix="kcal" /><Metric label="Água" value={waterTotal / 1000} suffix="L" decimals={1} /><Metric label="Exercícios" value={exerciseTotal} suffix="kcal" /></View><View style={styles.grid}><Metric label="Proteína" value={totals.protein} suffix="g" decimals={1} /><Metric label="Carboidratos" value={totals.carbs} suffix="g" decimals={1} /><Metric label="Gorduras" value={totals.fat} suffix="g" decimals={1} /><Metric label="Peso" value={latestWeight?.weightKg || 0} suffix="kg" decimals={1} /></View><View style={styles.card}><Text style={styles.cardTitle}>Diário alimentar</Text>{entries.length === 0 ? <Text style={styles.muted}>Nenhum alimento registrado nessa data.</Text> : null}{entries.map((entry) => <View key={entry.id} style={styles.entryRow}><View style={styles.entryContent}><Text style={styles.entryName}>{entry.name}</Text><Text style={styles.muted}>{mealLabels[entry.meal]} · {numberText(entry.quantity)}{entry.unit} · P {entry.protein}g · C {entry.carbs}g · G {entry.fat}g</Text></View><View style={styles.entryRight}><Text style={styles.kcal}>{entry.calories} kcal</Text><Pressable onPress={() => removeFood(entry.id)}><Text style={styles.deleteText}>Excluir</Text></Pressable></View></View>)}</View></View>;
 }
 
-function ScannerScreen({ scannerPermission, scanLocked, openScanner, handleBarcode }: { scannerPermission: boolean | null; scanLocked: boolean; openScanner: () => void; handleBarcode: (code: string) => void }) {
-  return <View style={styles.card}><Text style={styles.cardTitle}>CÃ³digo de barras</Text>{scannerPermission === false ? <Text style={styles.warning}>PermissÃ£o de cÃ¢mera negada.</Text> : null}{scannerPermission ? <View style={styles.scannerBox}><BarCodeScanner style={StyleSheet.absoluteFillObject} onBarCodeScanned={({ data }) => handleBarcode(data)} /></View> : <Pressable style={styles.primaryButton} onPress={openScanner}><Text style={styles.primaryButtonText}>Permitir cÃ¢mera</Text></Pressable>}{scanLocked ? <Text style={styles.muted}>Consultando produto...</Text> : null}</View>;
+function LogScreen({ foodForm, setFoodForm, scannedFood, addFood, query, setQuery, foodOptions, searching, doSearch, applyApiFood }: { foodForm: typeof emptyFoodForm; setFoodForm: Dispatch<SetStateAction<typeof emptyFoodForm>>; scannedFood: BarcodeFood | null; addFood: () => void; query: string; setQuery: (value: string) => void; foodOptions: ApiFood[]; searching: boolean; doSearch: () => void; applyApiFood: (food: ApiFood) => void }) {
+  return <View><View style={styles.card}><Text style={styles.cardTitle}>Buscar na base</Text><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Ex.: hambúrguer, pizza, arroz" value={query} onChangeText={setQuery} /><Pressable style={styles.squareButton} onPress={doSearch}><Ionicons name="search" size={22} color="#fff" /></Pressable></View>{searching ? <Text style={styles.muted}>Buscando...</Text> : null}{foodOptions.map((food) => <Pressable key={`${food.code || food.name}-${food.brand || ""}`} style={styles.foodOption} onPress={() => applyApiFood(food)}><Text style={styles.entryName}>{food.name}</Text><Text style={styles.muted}>{food.brand || "Base nutricional"} · {Math.round(food.calories_kcal_100g)} kcal/100g</Text></Pressable>)}</View><View style={styles.card}><Text style={styles.cardTitle}>Registrar alimento</Text>{scannedFood ? <Text style={styles.success}>Produto lido pelo código de barras.</Text> : null}<MealPicker value={foodForm.meal} onChange={(meal) => setFoodForm((current) => ({ ...current, meal }))} /><TextInput style={styles.input} placeholder="Alimento" value={foodForm.name} onChangeText={(name) => setFoodForm((current) => ({ ...current, name }))} /><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Quantidade" keyboardType="numeric" value={foodForm.quantity} onChangeText={(quantity) => setFoodForm((current) => ({ ...current, quantity }))} /><TextInput style={[styles.input, styles.flex]} placeholder="Unidade" value={foodForm.unit} onChangeText={(unit) => setFoodForm((current) => ({ ...current, unit }))} /></View><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Kcal/100g" keyboardType="numeric" value={foodForm.calories} onChangeText={(calories) => setFoodForm((current) => ({ ...current, calories }))} /><TextInput style={[styles.input, styles.flex]} placeholder="Proteína" keyboardType="numeric" value={foodForm.protein} onChangeText={(protein) => setFoodForm((current) => ({ ...current, protein }))} /></View><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Carbo." keyboardType="numeric" value={foodForm.carbs} onChangeText={(carbs) => setFoodForm((current) => ({ ...current, carbs }))} /><TextInput style={[styles.input, styles.flex]} placeholder="Gord." keyboardType="numeric" value={foodForm.fat} onChangeText={(fat) => setFoodForm((current) => ({ ...current, fat }))} /></View><Pressable style={styles.primaryButton} onPress={addFood}><Text style={styles.primaryButtonText}>Adicionar ao diário</Text></Pressable></View></View>;
 }
 
-function Metric({ label, value, suffix }: { label: string; value: number; suffix: string }) {
-  return <View style={styles.metricCard}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}<Text style={styles.metricSuffix}> {suffix}</Text></Text></View>;
-}
+function MealPicker({ value, onChange }: { value: Meal; onChange: (meal: Meal) => void }) { return <View style={styles.chips}>{(Object.keys(mealLabels) as Meal[]).map((meal) => <Pressable key={meal} style={[styles.chip, value === meal && styles.chipActive]} onPress={() => onChange(meal)}><Text style={[styles.chipText, value === meal && styles.chipTextActive]}>{mealLabels[meal]}</Text></Pressable>)}</View>; }
 
-function Tab({ icon, label, active, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; active: boolean; onPress: () => void }) {
-  return <Pressable style={styles.tab} onPress={onPress}><Ionicons name={icon} size={22} color={active ? "#0066ee" : "#64748b"} /><Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text></Pressable>;
-}
+function ScannerScreen({ scannerPermission, scanLocked, openScanner, handleBarcode }: { scannerPermission: boolean | null; scanLocked: boolean; openScanner: () => void; handleBarcode: (code: string) => void }) { return <View style={styles.card}><Text style={styles.cardTitle}>Código de barras</Text>{scannerPermission === false ? <Text style={styles.warning}>Permissão de câmera negada.</Text> : null}{scannerPermission ? <View style={styles.scannerBox}><BarCodeScanner style={StyleSheet.absoluteFillObject} onBarCodeScanned={({ data }) => handleBarcode(data)} /></View> : <Pressable style={styles.primaryButton} onPress={openScanner}><Text style={styles.primaryButtonText}>Permitir câmera</Text></Pressable>}{scanLocked ? <Text style={styles.muted}>Consultando produto...</Text> : null}</View>; }
 
-function Placeholder({ title, text }: { title: string; text: string }) {
-  return <View style={styles.card}><Text style={styles.cardTitle}>{title}</Text><Text style={styles.muted}>{text}</Text></View>;
+function FastingScreen({ activeFast, fastPlan, setFastPlan, guidance, toggleFast, loadGuidance }: { activeFast?: FastingSession; fastPlan: { protocol: Protocol; weightKg: string; calorieTarget: string; context: FastContext }; setFastPlan: Dispatch<SetStateAction<{ protocol: Protocol; weightKg: string; calorieTarget: string; context: FastContext }>>; guidance: FastingGuidance | null; toggleFast: () => void; loadGuidance: () => void }) {
+  return <View><View style={styles.card}><Text style={styles.cardTitle}>Jejum intermitente</Text><Text style={styles.muted}>{activeFast ? `Jejum iniciado em ${new Date(activeFast.startedAt).toLocaleString("pt-BR")}` : "Nenhum jejum ativo."}</Text><View style={styles.chips}>{(["12:12", "14:10", "16:8", "18:6"] as Protocol[]).map((p) => <Pressable key={p} style={[styles.chip, fastPlan.protocol === p && styles.chipActive]} onPress={() => setFastPlan((c) => ({ ...c, protocol: p }))}><Text style={[styles.chipText, fastPlan.protocol === p && styles.chipTextActive]}>{p}</Text></Pressable>)}</View><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Peso kg" keyboardType="numeric" value={fastPlan.weightKg} onChangeText={(weightKg) => setFastPlan((c) => ({ ...c, weightKg }))} /><TextInput style={[styles.input, styles.flex]} placeholder="Meta kcal" keyboardType="numeric" value={fastPlan.calorieTarget} onChangeText={(calorieTarget) => setFastPlan((c) => ({ ...c, calorieTarget }))} /></View><Pressable style={styles.secondaryButton} onPress={loadGuidance}><Text style={styles.secondaryButtonText}>Gerar orientação</Text></Pressable><Pressable style={styles.primaryButton} onPress={toggleFast}><Text style={styles.primaryButtonText}>{activeFast ? "Encerrar jejum" : `Iniciar jejum de ${protocolHours[fastPlan.protocol]}h`}</Text></Pressable></View>{guidance ? <View style={styles.card}><Text style={styles.cardTitle}>Entre a última e a próxima refeição</Text><Text style={styles.muted}>Ingerir cerca de {guidance.hydration_between_meals_ml} ml de água. Ao quebrar o jejum, mire {guidance.break_fast_calories_min}–{guidance.break_fast_calories_max} kcal, com pelo menos {guidance.protein_min_g} g de proteína e {guidance.fiber_min_g} g de fibras.</Text>{guidance.guidance?.map((item) => <Text key={item} style={styles.bullet}>• {item}</Text>)}{guidance.safety_notes?.map((item) => <Text key={item} style={styles.warning}>⚠ {item}</Text>)}</View> : null}</View>;
 }
+function ProgressScreen({ waterMl, setWaterMl, addWater, exerciseForm, setExerciseForm, addExercise, weightKg, setWeightKg, addWeight, weights, exercises, waterTotal }: { waterMl: string; setWaterMl: (v: string) => void; addWater: (amount?: number) => void; exerciseForm: { name: string; minutes: string; calories: string }; setExerciseForm: Dispatch<SetStateAction<{ name: string; minutes: string; calories: string }>>; addExercise: () => void; weightKg: string; setWeightKg: (v: string) => void; addWeight: () => void; weights: WeightEntry[]; exercises: ExerciseEntry[]; waterTotal: number }) { return <View><View style={styles.card}><Text style={styles.cardTitle}>Água</Text><Text style={styles.metricValue}>{numberText(waterTotal / 1000, 1)} L</Text><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="ml" keyboardType="numeric" value={waterMl} onChangeText={setWaterMl} /><Pressable style={styles.squareButton} onPress={() => addWater()}><Ionicons name="add" size={24} color="#fff" /></Pressable></View><View style={styles.chips}>{[250, 500, 750].map((ml) => <Pressable key={ml} style={styles.chip} onPress={() => addWater(ml)}><Text style={styles.chipText}>{ml} ml</Text></Pressable>)}</View></View><View style={styles.card}><Text style={styles.cardTitle}>Exercícios</Text><TextInput style={styles.input} placeholder="Nome" value={exerciseForm.name} onChangeText={(name) => setExerciseForm((c) => ({ ...c, name }))} /><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Minutos" keyboardType="numeric" value={exerciseForm.minutes} onChangeText={(minutes) => setExerciseForm((c) => ({ ...c, minutes }))} /><TextInput style={[styles.input, styles.flex]} placeholder="Kcal" keyboardType="numeric" value={exerciseForm.calories} onChangeText={(calories) => setExerciseForm((c) => ({ ...c, calories }))} /></View><Pressable style={styles.primaryButton} onPress={addExercise}><Text style={styles.primaryButtonText}>Adicionar exercício</Text></Pressable>{exercises.map((item) => <Text key={item.id} style={styles.bullet}>• {item.name}: {item.minutes} min · {item.calories} kcal</Text>)}</View><View style={styles.card}><Text style={styles.cardTitle}>Peso</Text><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Peso kg" keyboardType="numeric" value={weightKg} onChangeText={setWeightKg} /><Pressable style={styles.squareButton} onPress={addWeight}><Ionicons name="save-outline" size={22} color="#fff" /></Pressable></View>{weights.slice(-5).reverse().map((item) => <Text key={item.id} style={styles.bullet}>• {brDate(item.date)}: {numberText(item.weightKg, 1)} kg</Text>)}</View></View>; }
+
+function Metric({ label, value, suffix, decimals = 0 }: { label: string; value: number; suffix: string; decimals?: number }) { return <View style={styles.metricCard}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{numberText(value, decimals)}<Text style={styles.metricSuffix}> {suffix}</Text></Text></View>; }
+function Tab({ icon, label, active, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; active: boolean; onPress: () => void }) { return <Pressable style={styles.tab} onPress={onPress}><Ionicons name={icon} size={22} color={active ? "#0066ee" : "#64748b"} /><Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text></Pressable>; }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#f4f8fc" },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#f4f8fc" },
-  authWrap: { flex: 1, justifyContent: "center", padding: 22 },
-  content: { padding: 18, paddingBottom: 110 },
-  logo: { width: 58, height: 58, borderRadius: 18, backgroundColor: "#0066ee", alignItems: "center", justifyContent: "center", marginBottom: 16 },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 18 },
-  eyebrow: { color: "#0066ee", fontSize: 12, fontWeight: "800", textTransform: "uppercase" },
-  title: { color: "#111827", fontSize: 34, fontWeight: "900", letterSpacing: -1, marginTop: 4 },
-  subtitle: { color: "#64748b", fontSize: 15, lineHeight: 22, marginTop: 4 },
-  warning: { color: "#9a3412", backgroundColor: "#fff7ed", borderRadius: 14, padding: 12, marginBottom: 12, fontWeight: "700" },
-  success: { color: "#166534", backgroundColor: "#f0fdf4", borderRadius: 14, padding: 12, marginBottom: 12, fontWeight: "700" },
-  input: { minHeight: 48, borderRadius: 16, borderWidth: 1, borderColor: "#d7e3f2", backgroundColor: "#fff", paddingHorizontal: 14, marginBottom: 10, color: "#111827" },
-  primaryButton: { minHeight: 50, borderRadius: 16, backgroundColor: "#0066ee", alignItems: "center", justifyContent: "center", marginTop: 4 },
-  primaryButtonText: { color: "#fff", fontWeight: "900", fontSize: 16 },
-  secondaryButton: { minHeight: 50, borderRadius: 16, borderWidth: 1, borderColor: "#cfe0f4", backgroundColor: "#fff", alignItems: "center", justifyContent: "center", marginTop: 10 },
-  secondaryButtonText: { color: "#12355f", fontWeight: "900", fontSize: 16 },
-  iconButton: { width: 46, height: 46, borderRadius: 16, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#d7e3f2" },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 12 },
-  metricCard: { width: "48%", borderRadius: 20, backgroundColor: "#fff", padding: 14, borderWidth: 1, borderColor: "#dce7f4" },
-  metricLabel: { color: "#64748b", fontSize: 12, fontWeight: "800" },
-  metricValue: { color: "#111827", fontSize: 25, fontWeight: "900", marginTop: 8 },
-  metricSuffix: { color: "#64748b", fontSize: 13 },
-  card: { borderRadius: 22, backgroundColor: "#fff", padding: 16, borderWidth: 1, borderColor: "#dce7f4", marginBottom: 14 },
-  cardTitle: { color: "#111827", fontSize: 18, fontWeight: "900", marginBottom: 10 },
-  muted: { color: "#64748b", lineHeight: 21 },
-  entryRow: { borderTopWidth: 1, borderTopColor: "#edf3fa", paddingVertical: 12, gap: 8 },
-  entryName: { color: "#111827", fontWeight: "900", fontSize: 15 },
-  kcal: { color: "#0066ee", fontWeight: "900" },
-  row: { flexDirection: "row", gap: 10 },
-  flex: { flex: 1 },
-  scannerBox: { height: 360, overflow: "hidden", borderRadius: 22, backgroundColor: "#0f172a", marginTop: 8 },
-  tabBar: { position: "absolute", left: 0, right: 0, bottom: 0, minHeight: 76, paddingTop: 8, paddingBottom: 12, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#dce7f4", flexDirection: "row", justifyContent: "space-around" },
-  tab: { alignItems: "center", gap: 3, flex: 1 },
-  tabText: { color: "#64748b", fontSize: 11, fontWeight: "800" },
-  tabTextActive: { color: "#0066ee" }
+  safe: { flex: 1, backgroundColor: "#f4f8fc" }, center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#f4f8fc" }, authWrap: { flex: 1, justifyContent: "center", padding: 22 }, content: { padding: 18, paddingBottom: 110 }, logo: { width: 58, height: 58, borderRadius: 18, backgroundColor: "#0066ee", alignItems: "center", justifyContent: "center", marginBottom: 16 }, header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }, eyebrow: { color: "#0066ee", fontSize: 12, fontWeight: "800", textTransform: "uppercase" }, title: { color: "#111827", fontSize: 34, fontWeight: "900", letterSpacing: -1, marginTop: 4 }, subtitle: { color: "#64748b", fontSize: 15, lineHeight: 22, marginTop: 4 }, warning: { color: "#9a3412", backgroundColor: "#fff7ed", borderRadius: 14, padding: 12, marginBottom: 12, fontWeight: "700" }, success: { color: "#166534", backgroundColor: "#f0fdf4", borderRadius: 14, padding: 12, marginBottom: 12, fontWeight: "700" }, input: { minHeight: 48, borderRadius: 16, borderWidth: 1, borderColor: "#d7e3f2", backgroundColor: "#fff", paddingHorizontal: 14, marginBottom: 10, color: "#111827" }, primaryButton: { minHeight: 50, borderRadius: 16, backgroundColor: "#0066ee", alignItems: "center", justifyContent: "center", marginTop: 4 }, primaryButtonText: { color: "#fff", fontWeight: "900", fontSize: 16 }, secondaryButton: { minHeight: 50, borderRadius: 16, borderWidth: 1, borderColor: "#cfe0f4", backgroundColor: "#fff", alignItems: "center", justifyContent: "center", marginTop: 10 }, secondaryButtonText: { color: "#12355f", fontWeight: "900", fontSize: 16 }, smallButton: { minHeight: 42, borderRadius: 14, backgroundColor: "#e8f1ff", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }, smallButtonText: { color: "#12355f", fontWeight: "900", fontSize: 12 }, squareButton: { width: 50, height: 48, borderRadius: 16, backgroundColor: "#0066ee", alignItems: "center", justifyContent: "center" }, iconButton: { width: 46, height: 46, borderRadius: 16, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#d7e3f2" }, dateRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }, dateInput: { flex: 1, textAlign: "center", marginBottom: 0, fontWeight: "800" }, grid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 12 }, metricCard: { width: "48%", borderRadius: 20, backgroundColor: "#fff", padding: 14, borderWidth: 1, borderColor: "#dce7f4" }, metricLabel: { color: "#64748b", fontSize: 12, fontWeight: "800" }, metricValue: { color: "#111827", fontSize: 25, fontWeight: "900", marginTop: 8 }, metricSuffix: { color: "#64748b", fontSize: 13 }, card: { borderRadius: 22, backgroundColor: "#fff", padding: 16, borderWidth: 1, borderColor: "#dce7f4", marginBottom: 14 }, cardTitle: { color: "#111827", fontSize: 18, fontWeight: "900", marginBottom: 10 }, muted: { color: "#64748b", lineHeight: 21 }, bullet: { color: "#475569", lineHeight: 22, marginTop: 8 }, entryRow: { borderTopWidth: 1, borderTopColor: "#edf3fa", paddingVertical: 12, gap: 8, flexDirection: "row", justifyContent: "space-between" }, entryContent: { flex: 1, paddingRight: 8 }, entryRight: { alignItems: "flex-end" }, entryName: { color: "#111827", fontWeight: "900", fontSize: 15 }, kcal: { color: "#0066ee", fontWeight: "900" }, deleteText: { color: "#dc2626", fontWeight: "800", marginTop: 6 }, row: { flexDirection: "row", gap: 10 }, flex: { flex: 1 }, scannerBox: { height: 360, overflow: "hidden", borderRadius: 22, backgroundColor: "#0f172a", marginTop: 8 }, chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }, chip: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: "#eef5ff", borderWidth: 1, borderColor: "#d7e3f2" }, chipActive: { backgroundColor: "#0066ee", borderColor: "#0066ee" }, chipText: { color: "#12355f", fontWeight: "800" }, chipTextActive: { color: "#fff" }, foodOption: { borderTopWidth: 1, borderTopColor: "#edf3fa", paddingVertical: 12 }, tabBar: { position: "absolute", left: 0, right: 0, bottom: 0, minHeight: 76, paddingTop: 8, paddingBottom: 12, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#dce7f4", flexDirection: "row", justifyContent: "space-around" }, tab: { alignItems: "center", gap: 3, flex: 1 }, tabText: { color: "#64748b", fontSize: 11, fontWeight: "800" }, tabTextActive: { color: "#0066ee" }
 });
