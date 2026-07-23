@@ -83,7 +83,7 @@ type AppState = {
 };
 
 const today = new Date().toISOString().slice(0, 10);
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://nutricao-fitnessweb-production.up.railway.app";
 
 const mealLabels: Record<Meal, string> = {
   breakfast: "Café da manhã",
@@ -1560,4 +1560,5 @@ export default function Home() {
     </div>
   );
 }
+
 
