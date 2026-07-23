@@ -78,6 +78,19 @@ function calculateTargets(profile: UserProfile) {
   return { calories, protein: Math.round((calories * (proteinPct / 100)) / 4), carbs: Math.round((calories * (carbsPct / 100)) / 4), fat: Math.round((calories * (fatPct / 100)) / 9), bmr: Math.round(bmr), tdee: Math.round(bmr * activityFactor[profile.activity]) };
 }
 
+function readableError(error: unknown, fallback: string) {
+  const info = error as { message?: string; details?: string; hint?: string; code?: string };
+  const message = info?.message || fallback;
+  const joined = [message, info?.details, info?.hint].filter(Boolean).join(" ");
+  if (joined.includes("nutrition_profiles") || info?.code === "PGRST205" || info?.code === "42P01") {
+    return "Tabela nutrition_profiles não encontrada. Rode o SQL da migration no Supabase antes de salvar o perfil.";
+  }
+  if (joined.includes("violates row-level security") || info?.code === "42501") {
+    return "Permissão negada pelo Supabase. Verifique se você está logado e se a política RLS da tabela nutrition_profiles foi criada.";
+  }
+  return joined || fallback;
+}
+
 function nutritionFromForm(form: typeof emptyFoodForm) {
   const quantity = parseAmount(form.quantity) || 100;
   const unit = form.unit.trim() || "g";
@@ -212,7 +225,7 @@ export default function App() {
       }
       setSyncMessage("Sincronizado com Supabase.");
     } catch (error) {
-      setSyncMessage(error instanceof Error ? error.message : "Falha ao sincronizar.");
+      setSyncMessage(readableError(error, "Falha ao sincronizar."));
     } finally {
       setSyncing(false);
     }
@@ -516,7 +529,7 @@ export default function App() {
       setProfileSaveMessage("Perfil e metas salvos no Supabase.");
       Alert.alert("Perfil", "Perfil e metas salvos no Supabase.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao salvar perfil.";
+      const message = readableError(error, "Falha ao salvar perfil.");
       setSyncMessage(message);
       setProfileSaveMessage(message);
       Alert.alert("Perfil", message);
