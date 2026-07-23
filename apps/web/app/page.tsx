@@ -1432,11 +1432,11 @@ export default function Home() {
           <div>
             <div className="card-title">Planos do aplicativo</div>
             <h2>{isSystemAdmin ? "Administrador do sistema: acesso total" : "Comece com 7 dias gratuitos"}</h2>
-            <p className="muted compact">{isSystemAdmin ? "Seu usu?rio est? liberado como administrador geral e n?o precisa contratar plano." : "Escolha o plano ap?s o teste gr?tis para continuar usando os recursos completos do aplicativo."}</p>
+            <p className="muted compact">{isSystemAdmin ? "Seu usu\u00e1rio est\u00e1 liberado como administrador geral e n\u00e3o precisa contratar plano." : "Escolha o plano ap\u00f3s o teste gr\u00e1tis para continuar usando os recursos completos do aplicativo."}</p>
           </div>
           <div className="pricing-options">
-            <div className="price-card trial-card"><span>Teste gr?tis</span><strong>7 dias</strong><small>sem cobran?a inicial</small></div>
-            <div className="price-card featured"><span>Mensal</span><strong>R$ 9,90</strong><small>renova??o mensal</small></div>
+            <div className="price-card trial-card"><span>Teste gr&aacute;tis</span><strong>7 dias</strong><small>sem cobran&ccedil;a inicial</small></div>
+            <div className="price-card featured"><span>Mensal</span><strong>R$ 9,90</strong><small>renova&ccedil;&atilde;o mensal</small></div>
             <div className="price-card"><span>Anual</span><strong>R$ 79,90</strong><small>economia no pagamento anual</small></div>
           </div>
         </section>
