@@ -275,6 +275,7 @@ def create_subscription(payload: BillingCheckoutRequest) -> dict[str, object]:
         "external_reference": external_reference,
         "payer_email": payload.email,
         "back_url": f"{settings.app_web_url}?payment=mercado-pago&plan={payload.plan}",
+        "notification_url": f"{settings.app_web_url.replace('https://nutricao-fitness-web.vercel.app', 'https://nutricao-fitnessweb-production.up.railway.app')}/billing/webhook/mercado-pago",
         "status": "pending",
         "auto_recurring": {
             "frequency": plan["frequency"],
@@ -299,6 +300,9 @@ def create_subscription(payload: BillingCheckoutRequest) -> dict[str, object]:
     try:
         with urlopen(request, timeout=20) as response:
             result = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
+        raise HTTPException(status_code=502, detail=f"Falha ao criar assinatura no Mercado Pago: HTTP {exc.code} - {error_body}") from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Falha ao criar assinatura no Mercado Pago: {exc}") from exc
 
