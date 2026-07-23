@@ -351,6 +351,8 @@ export default function Home() {
   const [waterAmount, setWaterAmount] = useState("250");
   const [exerciseForm, setExerciseForm] = useState({ name: "", minutes: "30", calories: "" });
   const [weightForm, setWeightForm] = useState("");
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
 
   useEffect(() => {
     if (!supabase) {
@@ -361,7 +363,10 @@ export default function Home() {
     }
 
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, currentSession) => setSession(currentSession));
+    const { data: listener } = supabase.auth.onAuthStateChange((event, currentSession) => {
+      setSession(currentSession);
+      if (event === "PASSWORD_RECOVERY") setShowPasswordReset(true);
+    });
     setReady(true);
     return () => listener.subscription.unsubscribe();
   }, [supabase]);
@@ -608,6 +613,36 @@ export default function Home() {
     else {
       if (data.session) await ensureProfile(supabase, data.session);
       setMessage(mode === "signup" ? "Cadastro criado. Se a confirmação de e-mail estiver ativa, confirme antes de entrar." : "Login realizado.");
+    }
+  }
+
+  async function requestPasswordReset() {
+    if (!supabase) {
+      setMessage("Configure .env.local para ativar recupera??o de senha com Supabase.");
+      return;
+    }
+    const email = authForm.email.trim();
+    if (!email) {
+      setMessage("Digite seu e-mail para receber o link de altera??o de senha.");
+      return;
+    }
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+    setMessage(error ? error.message : "Enviamos um link de altera??o de senha para o e-mail informado.");
+  }
+
+  async function updatePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase) return;
+    if (newPassword.length < 6) {
+      setMessage("A nova senha precisa ter pelo menos 6 caracteres.");
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) setMessage(error.message);
+    else {
+      setNewPassword("");
+      setShowPasswordReset(false);
+      setMessage("Senha alterada com sucesso.");
     }
   }
 
@@ -1389,6 +1424,20 @@ export default function Home() {
 
         {message ? <p className="status-line">{loadingRemote ? "Carregando: " : ""}{message}</p> : null}
 
+        {showPasswordReset ? (
+          <section className="auth-panel card password-reset-panel">
+            <div>
+              <div className="card-title">Alterar senha</div>
+              <h2>Crie uma nova senha</h2>
+              <p className="muted">Digite uma nova senha para concluir a recupera??o da sua conta.</p>
+            </div>
+            <form className="auth-form" onSubmit={updatePassword}>
+              <input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="Nova senha" minLength={6} required />
+              <button className="primary-action" type="submit">Salvar nova senha</button>
+            </form>
+          </section>
+        ) : null}
+
         {session && (needsOnboarding || showProfileEditor) ? (
           <section className="onboarding-panel card" id="profile">
             <div>
@@ -1425,7 +1474,7 @@ export default function Home() {
         </section>
         <section className="visual-dashboard card" aria-label="Painel visual de indicadores">
           <div className="visual-hero">
-            <div className="ring-card calories-ring" style={{ "--value": calorieProgress, "--ring-color": "linear-gradient(135deg, #16a34a, #00b8ff)" } as CSSProperties}>
+            <div className="ring-card calories-ring" style={{ "--value": calorieProgress, "--ring-color": "#16a34a" } as CSSProperties}>
               <div className="ring-core"><span>Calorias</span><strong>{totals.consumed}</strong><small>de {state.calorieTarget} kcal</small></div>
             </div>
             <div className="visual-copy">
