@@ -18,3 +18,4 @@ __pycache__/
 
 apps/mobile/.expo/
 expo-mobile.*.log
+expo-web.*.log
