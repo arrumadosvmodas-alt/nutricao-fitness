@@ -62,7 +62,7 @@ app.add_middleware(
         "http://192.168.0.7:8082",
         "https://nutricao-fitness-web.vercel.app",
     ],
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+):(8081|8082)",
+    allow_origin_regex=r"(http://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+):(3000|8081|8082)|https://.*\.vercel\.app)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -319,3 +319,4 @@ async def mercado_pago_webhook(request: FastAPIRequest) -> dict[str, str]:
     # e atualizar user_subscriptions no Supabase.
     await request.json()
     return {"status": "received"}
+
