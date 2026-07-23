@@ -274,11 +274,11 @@ export default function App() {
   }
 
   async function requestPasswordReset() {
-    if (!supabase) return Alert.alert("Configura??o pendente", "Configure o Supabase no app mobile.");
+    if (!supabase) return Alert.alert("Configura\u00e7\u00e3o pendente", "Configure o Supabase no app mobile.");
     const email = authForm.email.trim();
-    if (!email) return Alert.alert("Esqueci a senha", "Digite seu e-mail antes de solicitar a recupera??o.");
+    if (!email) return Alert.alert("Esqueci a senha", "Digite seu e-mail antes de solicitar a recupera\u00e7\u00e3o.");
     const { error } = await supabase.auth.resetPasswordForEmail(email);
-    Alert.alert("Esqueci a senha", error ? error.message : "Enviamos um link de altera??o de senha para o e-mail informado.");
+    Alert.alert("Esqueci a senha", error ? error.message : "Enviamos um link de altera\u00e7\u00e3o de senha para o e-mail informado.");
   }
 
   function applyApiFood(food: ApiFood) {
@@ -568,7 +568,7 @@ export default function App() {
 }
 
 function AuthScreen({ authForm, setAuthForm, submitAuth, requestPasswordReset }: { authForm: { email: string; password: string }; setAuthForm: Dispatch<SetStateAction<{ email: string; password: string }>>; submitAuth: (mode: "login" | "signup") => void; requestPasswordReset: () => void }) {
-  return <SafeAreaView style={styles.safe}><StatusBar style="dark" /><KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.authWrap}><View style={styles.logo}><Ionicons name="flame" size={28} color="#fff" /></View><Text style={styles.title}>Nutri??o & Fitness</Text><Text style={styles.subtitle}>Entre para registrar alimentos, ?gua, exerc?cios, jejum e progresso no app mobile.</Text><PlansScreen compact />{!hasSupabaseConfig ? <Text style={styles.warning}>Configure o .env do mobile para ativar o login.</Text> : null}<TextInput style={styles.input} placeholder="E-mail" autoCapitalize="none" value={authForm.email} onChangeText={(email) => setAuthForm((current) => ({ ...current, email }))} /><TextInput style={styles.input} placeholder="Senha" secureTextEntry value={authForm.password} onChangeText={(password) => setAuthForm((current) => ({ ...current, password }))} /><Pressable style={styles.primaryButton} onPress={() => submitAuth("login")}><Text style={styles.primaryButtonText}>Entrar</Text></Pressable><Pressable style={styles.secondaryButton} onPress={() => submitAuth("signup")}><Text style={styles.secondaryButtonText}>Criar conta</Text></Pressable><Pressable onPress={requestPasswordReset}><Text style={styles.linkText}>Esqueci a senha</Text></Pressable><Text style={styles.supportText}>SAC: {supportEmail}</Text></KeyboardAvoidingView></SafeAreaView>;
+  return <SafeAreaView style={styles.safe}><StatusBar style="dark" /><KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.authWrap}><View style={styles.logo}><Ionicons name="flame" size={28} color="#fff" /></View><Text style={styles.title}>Nutri\u00e7\u00e3o & Fitness</Text><Text style={styles.subtitle}>Entre para registrar alimentos, \u00c1gua, exerc\u00edcios, jejum e progresso no app mobile.</Text><PlansScreen compact />{!hasSupabaseConfig ? <Text style={styles.warning}>Configure o .env do mobile para ativar o login.</Text> : null}<TextInput style={styles.input} placeholder="E-mail" autoCapitalize="none" value={authForm.email} onChangeText={(email) => setAuthForm((current) => ({ ...current, email }))} /><TextInput style={styles.input} placeholder="Senha" secureTextEntry value={authForm.password} onChangeText={(password) => setAuthForm((current) => ({ ...current, password }))} /><Pressable style={styles.primaryButton} onPress={() => submitAuth("login")}><Text style={styles.primaryButtonText}>Entrar</Text></Pressable><Pressable style={styles.secondaryButton} onPress={() => submitAuth("signup")}><Text style={styles.secondaryButtonText}>Criar conta</Text></Pressable><Pressable onPress={requestPasswordReset}><Text style={styles.linkText}>Esqueci a senha</Text></Pressable><Text style={styles.supportText}>SAC: {supportEmail}</Text></KeyboardAvoidingView></SafeAreaView>;
 }
 
 function DateSwitcher({ selectedDate, setSelectedDate }: { selectedDate: string; setSelectedDate: (date: string) => void }) {
@@ -622,9 +622,9 @@ function PlansScreen({ compact = false, isSystemAdmin = false }: { compact?: boo
   return <View style={[styles.planCard, compact && styles.planCardCompact]}>
     <Text style={styles.planLabel}>Planos do aplicativo</Text>
     <Text style={styles.planTitle}>{isSystemAdmin ? "Administrador do sistema" : "Comece com 7 dias gratuitos"}</Text>
-    <Text style={styles.planText}>{isSystemAdmin ? "Acesso total liberado, sem necessidade de plano pago." : "Ap?s o teste, escolha entre mensal ou anual para continuar com os recursos completos."}</Text>
+    <Text style={styles.planText}>{isSystemAdmin ? "Acesso total liberado, sem necessidade de plano pago." : "Ap\u00f3s o teste, escolha entre mensal ou anual para continuar com os recursos completos."}</Text>
     <View style={styles.planGrid}>
-      <View style={styles.planOption}><Text style={styles.planOptionLabel}>Teste gr?tis</Text><Text style={styles.planPrice}>7 dias</Text></View>
+      <View style={styles.planOption}><Text style={styles.planOptionLabel}>Teste gr\u00e1tis</Text><Text style={styles.planPrice}>7 dias</Text></View>
       <View style={[styles.planOption, styles.planOptionFeatured]}><Text style={styles.planOptionLabelDark}>Mensal</Text><Text style={styles.planPriceDark}>R$ 9,90</Text></View>
       <View style={styles.planOption}><Text style={styles.planOptionLabel}>Anual</Text><Text style={styles.planPrice}>R$ 79,90</Text></View>
     </View>
@@ -637,13 +637,13 @@ function VisualDashboard({ totals, targets, remaining, waterTotal, isSystemAdmin
   return <View style={styles.visualCard}>
     <View style={styles.visualTop}>
       <View style={styles.bigCircle}><Text style={styles.circleValue}>{caloriePercent}%</Text><Text style={styles.circleLabel}>calorias</Text></View>
-      <View style={styles.visualTextBox}><Text style={styles.planLabel}>Indicadores do dia</Text><Text style={styles.visualTitle}>{Math.max(0, remaining)} kcal restantes</Text><Text style={styles.planText}>{isSystemAdmin ? "Admin sistema: acesso total." : "Calorias, macros, ?gua e jejum em leitura r?pida."}</Text></View>
+      <View style={styles.visualTextBox}><Text style={styles.planLabel}>Indicadores do dia</Text><Text style={styles.visualTitle}>{Math.max(0, remaining)} kcal restantes</Text><Text style={styles.planText}>{isSystemAdmin ? "Admin sistema: acesso total." : "Calorias, macros, \u00c1gua e jejum em leitura r\u00e1pida."}</Text></View>
     </View>
     <View style={styles.circleGrid}>
-      <MiniCircle label="Prote?na" value={totals.protein} target={targets.protein} suffix="g" />
+      <MiniCircle label="Prote\u00edna" value={totals.protein} target={targets.protein} suffix="g" />
       <MiniCircle label="Carbo" value={totals.carbs} target={targets.carbs} suffix="g" />
       <MiniCircle label="Gordura" value={totals.fat} target={targets.fat} suffix="g" />
-      <MiniCircle label="?gua" value={waterPercent} target={100} suffix="%" />
+      <MiniCircle label="\u00c1gua" value={waterPercent} target={100} suffix="%" />
     </View>
   </View>;
 }
