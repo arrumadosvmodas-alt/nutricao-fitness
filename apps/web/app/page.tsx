@@ -328,6 +328,7 @@ export default function Home() {
   const [adminSourceFilter, setAdminSourceFilter] = useState<"all" | FoodSource>("all");
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
+  const supportEmail = "hslspe2@gmail.com";
   const [goalTargets, setGoalTargets] = useState<GoalTargets>(defaultTargets);
   const [fastingGuidance, setFastingGuidance] = useState<FastingGuidance>(getLocalFastingGuidance(defaultState.fastingPlan));
   const [fastingSessions, setFastingSessions] = useState<FastingSession[]>([]);
@@ -1424,7 +1425,7 @@ export default function Home() {
         </section>
         <section className="visual-dashboard card" aria-label="Painel visual de indicadores">
           <div className="visual-hero">
-            <div className="ring-card calories-ring" style={{ "--value": calorieProgress, "--ring-color": "#16a34a" } as CSSProperties}>
+            <div className="ring-card calories-ring" style={{ "--value": calorieProgress, "--ring-color": "linear-gradient(135deg, #16a34a, #00b8ff)" } as CSSProperties}>
               <div className="ring-core"><span>Calorias</span><strong>{totals.consumed}</strong><small>de {state.calorieTarget} kcal</small></div>
             </div>
             <div className="visual-copy">
@@ -1465,7 +1466,11 @@ export default function Home() {
 
           <article className="card span-12 fasting-card" id="fasting"><div className="fasting-header"><div><div className="card-title"><Clock3 size={16} /> Plano de jejum intermitente</div><h2>{activeFastingSession ? "Jejum em andamento" : `Protocolo ${state.fastingPlan.protocol}: próxima refeição ${fastingGuidance.nextMeal}`}</h2><p className="muted compact">{activeFastingSession ? `Iniciado em ${formatDateTime(activeFastingSession.startedAt)} · termina em ${formatDateTime(activeFastingSession.targetEndAt)}` : `Última refeição ${state.fastingPlan.lastMeal} · janela alimentar de ${fastingGuidance.eatingWindowHours}h`}</p></div><span className="fasting-pill"><Clock3 size={16} /> {fastingGuidance.fastingHours}h jejum · {fastingGuidance.eatingWindowHours}h alimentação</span></div><div className="fasting-timer"><div><span>Status</span><strong>{activeFastingSession ? "Em jejum" : "Janela livre"}</strong></div><div><span>Decorrido</span><strong>{fastingElapsed}</strong></div><div><span>Restante</span><strong>{fastingRemaining}</strong></div><div className="fasting-actions"><button className="primary-action" type="button" onClick={startFastingSession} disabled={Boolean(activeFastingSession)}>Iniciar jejum</button><button className="secondary-action" type="button" onClick={finishFastingSession} disabled={!activeFastingSession}>Encerrar</button></div></div><div className="progress fasting-progress"><span style={{ width: `${fastingProgress}%`, background: "var(--blue)" }} /></div><div className="fasting-controls"><label className="field">Protocolo<select value={state.fastingPlan.protocol} onChange={(event) => saveFastingPlan({ ...state.fastingPlan, protocol: event.target.value as Protocol })}><option>12:12</option><option>14:10</option><option>16:8</option><option>18:6</option></select></label><label className="field">Última refeição<input type="time" value={state.fastingPlan.lastMeal} onChange={(event) => saveFastingPlan({ ...state.fastingPlan, lastMeal: event.target.value })} /></label><label className="field">Contexto<select value={state.fastingPlan.context} onChange={(event) => saveFastingPlan({ ...state.fastingPlan, context: event.target.value as Context })}><option value="work">Trabalho</option><option value="training">Treino</option><option value="hot_day">Dia quente</option><option value="rest">Repouso</option></select></label></div><div className="fasting-grid"><div><div className="fasting-label">Entre refeições</div><strong>{fastingGuidance.hydration} ml</strong><p>Meta mínima de hidratação entre a última e a próxima refeição.</p></div><div><div className="fasting-label">O que ingerir</div><strong>0 kcal</strong><p>Água, café sem açúcar, chá sem açúcar e eletrólitos sem calorias quando necessário.</p></div><div><div className="fasting-label">Próxima refeição</div><strong>{fastingGuidance.minKcal} a {fastingGuidance.maxKcal} kcal</strong><p>Com pelo menos {fastingGuidance.protein}g de proteína e {fastingGuidance.fiber}g de fibra, ajustando ao restante do diário.</p></div></div>{fastingSessions.length ? <div className="fasting-history"><strong>Histórico recente</strong>{fastingSessions.slice(0, 5).map((item) => <div className="fasting-history-row" key={item.id}><span>{formatDateTime(item.startedAt)}</span><span>{item.status === "active" ? "Em andamento" : `Concluído · ${formatDuration(new Date(item.endedAt ?? item.targetEndAt).getTime() - new Date(item.startedAt).getTime())}`}</span></div>)}</div> : null}<p className="safety-note">Orientação educativa. Gestação, diabetes, histórico de transtorno alimentar, uso de medicação ou sintomas como tontura e tremor exigem avaliação profissional antes de seguir jejum.</p></article>
         </section>
-      </main>
+      <footer className="app-footer">
+        <span>Nutri??o & Fitness</span>
+        <a href={`mailto:${supportEmail}`}>SAC: {supportEmail}</a>
+      </footer>
+    </main>
     </div>
   );
 }

@@ -9,6 +9,9 @@
   --blue: #235c91;
   --coral: #c95f43;
   --gold: #b47a1f;
+  --gradient-primary: linear-gradient(135deg, #0066ee 0%, #00a8ff 48%, #16a34a 100%);
+  --gradient-health: linear-gradient(135deg, #16a34a 0%, #22c55e 45%, #00b8ff 100%);
+  --gradient-warm: linear-gradient(135deg, #ff7a59 0%, #ffb020 100%);
   --shadow: 0 18px 45px rgba(23, 33, 27, 0.08);
   --shadow-soft: 0 10px 25px rgba(23, 33, 27, 0.06);
 }
@@ -67,8 +70,9 @@ input, select, textarea {
   width: 36px;
   height: 36px;
   border-radius: 8px;
-  background: var(--green);
+  background: var(--gradient-health);
   color: white;
+  box-shadow: 0 12px 24px rgba(0, 102, 238, 0.18);
 }
 
 .nav {
@@ -150,7 +154,7 @@ h2 {
 
 .secondary-action {
   border: 1px solid var(--line);
-  background: var(--panel);
+  background: linear-gradient(135deg, #ffffff, #f7fbff);
   color: var(--ink);
   padding: 11px 14px;
 }
@@ -174,7 +178,7 @@ h2 {
 .card {
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--panel);
+  background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(247,251,255,.92));
   padding: 18px;
 }
 
@@ -1170,13 +1174,13 @@ body {
 .stat-card:nth-child(4) { border-top-color: rgba(255, 122, 89, 0.62); }
 
 .primary-action {
-  background: linear-gradient(135deg, #0066ee, #268cff);
+  background: var(--gradient-primary);
   color: #ffffff;
   box-shadow: 0 12px 24px rgba(0, 102, 238, 0.2);
 }
 
 .primary-action:hover {
-  background: linear-gradient(135deg, #005bd4, #147cf0);
+  background: linear-gradient(135deg, #005bd4, #00a8ff, #159447);
 }
 
 .secondary-action {
@@ -1780,7 +1784,7 @@ button:disabled {
 .mini-ring {
   --value: 0;
   --ring-color: #0066ee;
-  background: conic-gradient(var(--ring-color) calc(var(--value) * 1%), #e5eef8 0);
+  background: conic-gradient(from 220deg, #0066ee 0%, #00b8ff calc(var(--value) * .55%), #16a34a calc(var(--value) * 1%), #e5eef8 0);
   border-radius: 999px;
   display: grid;
   place-items: center;
@@ -1922,5 +1926,125 @@ button:disabled {
   }
   .ring-card {
     margin: 0 auto;
+  }
+}
+
+
+.support-line {
+  margin: 10px 0 0;
+  color: #516070;
+  font-weight: 800;
+}
+
+.support-line a,
+.app-footer a,
+.link-action {
+  color: #0066ee;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.link-action {
+  border: 0;
+  background: transparent;
+  padding: 8px 4px 0;
+  justify-content: flex-start;
+}
+
+.pricing-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 460px);
+  gap: 18px;
+  align-items: center;
+  margin-top: 18px;
+  border: 0;
+  color: #fff;
+  background:
+    radial-gradient(circle at 12% 15%, rgba(255,255,255,.24), transparent 28%),
+    linear-gradient(135deg, #005bd4 0%, #007cff 38%, #16a34a 100%);
+  box-shadow: 0 22px 55px rgba(0, 102, 238, .2);
+}
+
+.pricing-panel .card-title,
+.pricing-panel .muted {
+  color: rgba(255,255,255,.86);
+}
+
+.pricing-panel h2 {
+  color: #fff;
+}
+
+.pricing-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.price-card {
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 22px;
+  background: rgba(255,255,255,.16);
+  backdrop-filter: blur(10px);
+  padding: 16px;
+  color: #fff;
+}
+
+.price-card.featured {
+  background: rgba(255,255,255,.94);
+  color: #0f172a;
+}
+
+.price-card span,
+.price-card small {
+  display: block;
+  font-weight: 800;
+  opacity: .82;
+}
+
+.price-card strong {
+  display: block;
+  margin: 6px 0;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.app-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 16px;
+  margin: 26px 0 90px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.progress span,
+.fasting-progress span {
+  background: var(--gradient-primary) !important;
+}
+
+.water-infographic {
+  background:
+    radial-gradient(circle at 90% 0%, rgba(0, 184, 255, .18), transparent 34%),
+    linear-gradient(135deg, #ffffff, #eef8ff);
+}
+
+.water-drops .filled {
+  background: linear-gradient(135deg, #0066ee, #00b8ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@media (max-width: 760px) {
+  .pricing-panel,
+  .pricing-options {
+    grid-template-columns: 1fr;
+  }
+
+  .price-card strong {
+    font-size: 26px;
   }
 }
