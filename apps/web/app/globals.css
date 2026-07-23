@@ -1745,3 +1745,182 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+.marketing-card {
+  background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 52%, #ecfdf5 100%);
+}
+
+.marketing-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.marketing-links a {
+  text-decoration: none;
+}
+
+.visual-dashboard {
+  display: grid;
+  gap: 22px;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(0, 102, 238, 0.14), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(22, 163, 74, 0.13), transparent 30%),
+    linear-gradient(135deg, #ffffff, #f4f9ff);
+}
+
+.visual-hero {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) 1fr;
+  gap: 22px;
+  align-items: center;
+}
+
+.ring-card,
+.mini-ring {
+  --value: 0;
+  --ring-color: #0066ee;
+  background: conic-gradient(var(--ring-color) calc(var(--value) * 1%), #e5eef8 0);
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+
+.ring-card {
+  width: 230px;
+  height: 230px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.8), 0 22px 50px rgba(0, 102, 238, .16);
+}
+
+.ring-core {
+  width: 164px;
+  height: 164px;
+  border-radius: 999px;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 4px;
+  text-align: center;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, .08);
+}
+
+.ring-core span,
+.mini-ring-card span,
+.water-infographic small,
+.ring-core small,
+.mini-ring-card small {
+  color: #64748b;
+  font-weight: 800;
+}
+
+.ring-core strong {
+  color: #0f172a;
+  font-size: 42px;
+  line-height: 1;
+  letter-spacing: -.06em;
+}
+
+.visual-copy h2 {
+  font-size: clamp(30px, 5vw, 58px);
+  line-height: .95;
+  letter-spacing: -.07em;
+  margin: 8px 0 10px;
+}
+
+.visual-badges,
+.visual-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.visual-badges span {
+  border: 1px solid #dce7f4;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: #fff;
+  color: #12355f;
+  font-weight: 900;
+  font-size: 12px;
+}
+
+.visual-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
+}
+
+.mini-ring-card,
+.water-infographic {
+  border: 1px solid #dce7f4;
+  border-radius: 22px;
+  padding: 14px;
+  background: rgba(255,255,255,.86);
+  box-shadow: 0 10px 26px rgba(15,23,42,.05);
+}
+
+.mini-ring-card {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  text-align: center;
+}
+
+.mini-ring {
+  width: 92px;
+  height: 92px;
+}
+
+.mini-ring::after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.mini-ring strong {
+  position: relative;
+  z-index: 1;
+  color: #0f172a;
+  font-size: 19px;
+  letter-spacing: -.04em;
+}
+
+.water-infographic {
+  display: grid;
+  gap: 10px;
+  align-content: space-between;
+}
+
+.water-infographic strong {
+  display: block;
+  color: #0066ee;
+  font-size: 34px;
+  letter-spacing: -.05em;
+}
+
+.water-drops {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
+  color: #d8e7f8;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.water-drops .filled {
+  color: #0066ee;
+  filter: drop-shadow(0 5px 8px rgba(0,102,238,.22));
+}
+
+@media (max-width: 900px) {
+  .visual-hero,
+  .visual-grid {
+    grid-template-columns: 1fr;
+  }
+  .ring-card {
+    margin: 0 auto;
+  }
+}
