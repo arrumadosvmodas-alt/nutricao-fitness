@@ -1,21 +1,22 @@
 # Nutrição & Fitness
 
-Aplicativo de diario alimentar, metas nutricionais e progresso inspirado no funcionamento de produtos como MyFitnessPal, com implementacao propria em Supabase, Vercel e Railway.
+Aplicativo de diário alimentar, metas nutricionais e progresso inspirado no funcionamento de produtos como MyFitnessPal, com implementação própria em Supabase, Vercel, Railway e Expo.
 
 ## Estrutura
 
 ```text
 apps/web        Next.js para Vercel
+apps/mobile     Expo/React Native para Android, iOS e web mobile
 services/api    FastAPI para Railway
-supabase         Migrations, seed e configuracoes locais
-docs             Planejamento funcional e tecnico
+supabase         Migrations, seed e configurações locais
+docs             Planejamento funcional e técnico
 ```
 
-## Primeira execucao
+## Primeira execução web
 
 1. Copie `.env.example` para `.env.local` e preencha as chaves.
 2. Suba o Supabase local ou conecte um projeto hospedado.
-3. Instale dependencias do frontend e da API.
+3. Instale dependências do frontend e da API.
 4. Rode as migrations em `supabase/migrations`.
 5. Inicie web e API em terminais separados.
 
@@ -33,9 +34,46 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
+## Teste mobile com Expo
+
+1. Confirme o arquivo `apps/mobile/.env` com:
+
+```text
+EXPO_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=sua-chave-anon
+EXPO_PUBLIC_API_URL=https://nutricao-fitnessweb-production.up.railway.app
+```
+
+2. Inicie o mobile:
+
+```powershell
+npm run dev:mobile
+```
+
+3. Para testar no celular:
+
+- instale o app Expo Go;
+- leia o QR Code mostrado no terminal;
+- mantenha computador e celular na mesma rede Wi-Fi.
+
+4. Para testar no browser do celular:
+
+```powershell
+npm run web:mobile
+```
+
+A câmera pode ser bloqueada em browser com endereço `http://192...`. Nesse caso, use o campo manual de código de barras ou teste por HTTPS/app instalado.
+
+## Build Android interno
+
+O projeto já possui `apps/mobile/eas.json` para gerar APK de teste interno. Quando for gerar o APK, use dentro de `apps/mobile`:
+
+```powershell
+npx eas build -p android --profile preview
+```
+
 ## Deploy
 
 - Vercel hospeda `apps/web`.
 - Railway hospeda `services/api` e workers futuros.
 - Supabase fornece Postgres, Auth, Storage, Realtime e RLS.
-

@@ -12,6 +12,8 @@
     "dev:mobile": "npm --workspace apps/mobile run start",
     "android:mobile": "npm --workspace apps/mobile run android",
     "ios:mobile": "npm --workspace apps/mobile run ios",
-    "web:mobile": "npm --workspace apps/mobile run web"
+    "web:mobile": "npm --workspace apps/mobile run web",
+    "build:mobile:android": "cd apps/mobile && npx eas build -p android --profile preview",
+    "build:mobile:production": "cd apps/mobile && npx eas build -p android --profile production"
   }
 }
