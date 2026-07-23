@@ -6,6 +6,7 @@ from urllib.request import Request, urlopen
 
 from fastapi import FastAPI, HTTPException, Request as FastAPIRequest
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from app.config import settings
 from app.domain.fasting import build_fasting_guidance
@@ -17,6 +18,34 @@ from app.schemas import (
     GoalRequest,
     GoalResponse,
 )
+
+
+class BillingCheckoutRequest(BaseModel):
+    plan: str
+    user_id: str | None = None
+    email: str | None = None
+
+
+class BillingCheckoutResponse(BaseModel):
+    checkout_url: str
+    mercado_pago_id: str | None = None
+    plan: str
+
+
+BILLING_PLANS = {
+    "monthly": {
+        "reason": "Nutri??o & Fitness Mensal",
+        "amount": 9.90,
+        "frequency": 1,
+        "frequency_type": "months",
+    },
+    "annual": {
+        "reason": "Nutri??o & Fitness Anual",
+        "amount": 79.90,
+        "frequency": 12,
+        "frequency_type": "months",
+    },
+}
 
 app = FastAPI(title=settings.app_name)
 
