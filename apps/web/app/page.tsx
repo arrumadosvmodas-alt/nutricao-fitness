@@ -310,6 +310,7 @@ export default function Home() {
   const [authForm, setAuthForm] = useState({ email: "", password: "" });
   const [foodOptions, setFoodOptions] = useState<FoodOption[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSystemAdmin, setIsSystemAdmin] = useState(false);
   const [reportDays, setReportDays] = useState<ReportDay[]>([]);
   const [reportRange, setReportRange] = useState<7 | 15 | 30>(7);
   const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([]);
@@ -395,10 +396,11 @@ export default function Home() {
 
     const reportDates = getRecentDates(selectedDate, reportRange);
     const reportStart = reportDates[0];
-    const [profile, foods, adminStatus, diary, water, exercise, weight, goals, fasting, fastingSessionRows, savedMealRows, reportDiary, reportWater, reportExercise] = await Promise.all([
+    const [profile, foods, adminStatus, systemAdminStatus, diary, water, exercise, weight, goals, fasting, fastingSessionRows, savedMealRows, reportDiary, reportWater, reportExercise] = await Promise.all([
       supabase.from("profiles").select("full_name,birth_date,sex,height_cm,current_weight_kg,target_weight_kg,activity_level,goal").eq("id", session.user.id).maybeSingle(),
       supabase.from("foods").select("id,owner_id,name,brand,source,calories_kcal,protein_g,carbs_g,fat_g,serving_unit,serving_size").order("name").limit(100),
       supabase.from("app_admins").select("user_id").eq("user_id", session.user.id).maybeSingle(),
+      supabase.from("system_admins").select("user_id").eq("user_id", session.user.id).maybeSingle(),
       supabase.from("diary_entries").select("id,meal,food_name_snapshot,quantity,unit,calories_kcal,protein_g,carbs_g,fat_g").eq("diary_date", selectedDate).order("created_at"),
       supabase.from("water_entries").select("id,amount_ml").eq("diary_date", selectedDate).order("created_at"),
       supabase.from("exercise_entries").select("id,name,duration_minutes,calories_kcal").eq("diary_date", selectedDate).order("created_at"),
@@ -412,7 +414,9 @@ export default function Home() {
       supabase.from("exercise_entries").select("diary_date,calories_kcal").gte("diary_date", reportStart).lte("diary_date", selectedDate)
     ]);
 
-    setIsAdmin(Boolean(adminStatus.data));
+    const hasSystemAdminAccess = !systemAdminStatus.error && Boolean(systemAdminStatus.data);
+    setIsSystemAdmin(hasSystemAdminAccess);
+    setIsAdmin(Boolean(adminStatus.data) || hasSystemAdminAccess);
 
     const profileData = profile.data;
     if (profileData) {
@@ -1379,7 +1383,7 @@ export default function Home() {
           <a href="#food"><Search size={18} /> Registrar</a>
           <a href="#reports"><BarChart3 size={18} /> Relatórios</a>
           <a href="#saved-meals"><ClipboardList size={18} /> Refeições</a>
-          <a href="#my-foods"><ClipboardList size={18} /> Minha base</a>{isAdmin ? <a href="#admin-foods"><ShieldCheck size={18} /> Admin</a> : null}
+          <a href="#my-foods"><ClipboardList size={18} /> Minha base</a><a href="#planos"><Flame size={18} /> Planos</a>{isAdmin ? <a href="#admin-foods"><ShieldCheck size={18} /> Admin alimentos</a> : null}{isSystemAdmin ? <a href="#system-admin"><UserCog size={18} /> Admin sistema</a> : null}
           <a href="#fasting"><Clock3 size={18} /> Jejum</a>
           <a href="#progress"><Scale size={18} /> Peso</a>
           {session ? <a href="#profile" onClick={() => setShowProfileEditor(true)}><UserCog size={18} /> Perfil</a> : null}
@@ -1423,6 +1427,19 @@ export default function Home() {
         ) : null}
 
         {message ? <p className="status-line">{loadingRemote ? "Carregando: " : ""}{message}</p> : null}
+
+        <section className="pricing-panel card" id="planos">
+          <div>
+            <div className="card-title">Planos do aplicativo</div>
+            <h2>{isSystemAdmin ? "Administrador do sistema: acesso total" : "Comece com 7 dias gratuitos"}</h2>
+            <p className="muted compact">{isSystemAdmin ? "Seu usu?rio est? liberado como administrador geral e n?o precisa contratar plano." : "Escolha o plano ap?s o teste gr?tis para continuar usando os recursos completos do aplicativo."}</p>
+          </div>
+          <div className="pricing-options">
+            <div className="price-card trial-card"><span>Teste gr?tis</span><strong>7 dias</strong><small>sem cobran?a inicial</small></div>
+            <div className="price-card featured"><span>Mensal</span><strong>R$ 9,90</strong><small>renova??o mensal</small></div>
+            <div className="price-card"><span>Anual</span><strong>R$ 79,90</strong><small>economia no pagamento anual</small></div>
+          </div>
+        </section>
 
         {showPasswordReset ? (
           <section className="auth-panel card password-reset-panel">

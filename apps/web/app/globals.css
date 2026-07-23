@@ -1046,7 +1046,7 @@ textarea:focus {
 
 .overview-metrics {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -2046,5 +2046,58 @@ button:disabled {
 
   .price-card strong {
     font-size: 26px;
+  }
+}
+
+
+.trial-card {
+  background: linear-gradient(135deg, rgba(255,255,255,.24), rgba(255,255,255,.12));
+}
+
+.system-admin-card {
+  border: 0;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(255,255,255,.25), transparent 28%),
+    linear-gradient(135deg, #0f172a 0%, #12355f 52%, #0066ee 100%);
+  color: #fff;
+}
+
+.system-admin-card .card-title,
+.system-admin-card .muted {
+  color: rgba(255,255,255,.82);
+}
+
+.system-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.system-admin-grid span {
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 18px;
+  background: rgba(255,255,255,.12);
+  padding: 14px;
+  overflow-wrap: anywhere;
+}
+
+.system-admin-grid strong,
+.system-admin-grid small {
+  display: block;
+}
+
+.system-admin-grid strong {
+  font-size: 20px;
+}
+
+.system-admin-grid small {
+  color: rgba(255,255,255,.74);
+  font-weight: 800;
+}
+
+@media (max-width: 760px) {
+  .system-admin-grid {
+    grid-template-columns: 1fr;
   }
 }
