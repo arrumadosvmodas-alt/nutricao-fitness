@@ -650,6 +650,26 @@ export default function Home() {
     }
   }
 
+  async function startCheckout(plan: "monthly" | "annual") {
+    if (isSystemAdmin) {
+      setMessage("Administrador do sistema possui acesso total e n?o precisa contratar plano.");
+      return;
+    }
+    try {
+      setMessage("Criando checkout no Mercado Pago...");
+      const response = await fetch(apiUrl + "/billing/create-subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan, user_id: session?.user.id, email: session?.user.email })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Falha ao criar checkout.");
+      window.location.href = data.checkout_url;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Falha ao iniciar pagamento.");
+    }
+  }
+
   function applyPer100gFood(food: FoodOption, grams: number) {
     const factor = (Number(grams) || 0) / 100;
     setFoodForm((current) => ({
@@ -1436,8 +1456,8 @@ export default function Home() {
           </div>
           <div className="pricing-options">
             <div className="price-card trial-card"><span>Teste gr&aacute;tis</span><strong>7 dias</strong><small>sem cobran&ccedil;a inicial</small></div>
-            <div className="price-card featured"><span>Mensal</span><strong>R$ 9,90</strong><small>renova&ccedil;&atilde;o mensal</small></div>
-            <div className="price-card"><span>Anual</span><strong>R$ 79,90</strong><small>economia no pagamento anual</small></div>
+            <button className="price-card featured price-button" type="button" onClick={() => startCheckout("monthly")}><span>Mensal</span><strong>R$ 9,90</strong><small>renova&ccedil;&atilde;o mensal</small></button>
+            <button className="price-card price-button" type="button" onClick={() => startCheckout("annual")}><span>Anual</span><strong>R$ 79,90</strong><small>economia no pagamento anual</small></button>
           </div>
         </section>
 

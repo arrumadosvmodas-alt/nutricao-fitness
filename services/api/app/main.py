@@ -4,7 +4,7 @@ import unicodedata
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request as FastAPIRequest
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
@@ -230,3 +230,59 @@ def food_by_barcode(code: str) -> dict[str, object]:
     return {"item": item}
 
 
+
+
+@app.post("/billing/create-subscription", response_model=BillingCheckoutResponse)
+def create_subscription(payload: BillingCheckoutRequest) -> dict[str, object]:
+    if payload.plan not in BILLING_PLANS:
+        raise HTTPException(status_code=400, detail="Plano inv?lido.")
+    if not settings.mercado_pago_access_token:
+        raise HTTPException(status_code=500, detail="Mercado Pago n?o configurado na API.")
+
+    plan = BILLING_PLANS[payload.plan]
+    external_reference = f"{payload.user_id or 'anonymous'}:{payload.plan}"
+    body = {
+        "reason": plan["reason"],
+        "external_reference": external_reference,
+        "payer_email": payload.email,
+        "back_url": f"{settings.app_web_url}?payment=mercado-pago&plan={payload.plan}",
+        "status": "pending",
+        "auto_recurring": {
+            "frequency": plan["frequency"],
+            "frequency_type": plan["frequency_type"],
+            "transaction_amount": plan["amount"],
+            "currency_id": "BRL",
+            "free_trial": {"frequency": 7, "frequency_type": "days"},
+        },
+    }
+    if not payload.email:
+        body.pop("payer_email")
+
+    request = Request(
+        "https://api.mercadopago.com/preapproval",
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {settings.mercado_pago_access_token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Falha ao criar assinatura no Mercado Pago: {exc}") from exc
+
+    checkout_url = result.get("init_point") or result.get("sandbox_init_point")
+    if not checkout_url:
+        raise HTTPException(status_code=502, detail="Mercado Pago n?o retornou link de checkout.")
+    return {"checkout_url": checkout_url, "mercado_pago_id": result.get("id"), "plan": payload.plan}
+
+
+@app.post("/billing/webhook/mercado-pago")
+async def mercado_pago_webhook(request: FastAPIRequest) -> dict[str, str]:
+    # Primeira vers?o: confirma recebimento para o Mercado Pago.
+    # Na pr?xima etapa usaremos o id recebido para consultar o pagamento/assinatura
+    # e atualizar user_subscriptions no Supabase.
+    await request.json()
+    return {"status": "received"}

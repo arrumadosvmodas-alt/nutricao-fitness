@@ -59,3 +59,14 @@ export async function getFastingGuidance(payload: {
   if (!response.ok) return null;
   return response.json();
 }
+
+export async function createMercadoPagoSubscription(payload: { plan: "monthly" | "annual"; user_id?: string; email?: string }): Promise<{ checkout_url: string; mercado_pago_id?: string; plan: string }> {
+  const response = await fetch(apiUrl + "/billing/create-subscription", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.detail || "Falha ao criar checkout Mercado Pago.");
+  return data;
+}

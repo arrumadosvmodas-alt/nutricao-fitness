@@ -2101,3 +2101,13 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+.price-button {
+  border: 1px solid rgba(255,255,255,.28);
+  cursor: pointer;
+  text-align: left;
+}
+
+.price-button:hover {
+  transform: translateY(-2px);
+}
