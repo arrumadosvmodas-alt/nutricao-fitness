@@ -97,3 +97,43 @@ No painel do Supabase:
 7. Em Table Editor, confirme a tabela `nutrition_profiles`.
 
 Depois disso, no app mobile, entre em Perfil e toque em `Salvar perfil no Supabase`.
+
+## Empacotamento mobile
+
+Assets usados no pacote Expo:
+
+- `apps/mobile/assets/icon.png`: ícone principal.
+- `apps/mobile/assets/adaptive-icon.png`: ícone adaptativo Android.
+- `apps/mobile/assets/splash.png`: tela de abertura.
+- `apps/mobile/assets/logo.png`: logo horizontal para uso interno/marketing.
+- `apps/mobile/assets/brand-logo-source.png`: fonte visual do logo.
+
+Checklist antes de gerar APK:
+
+1. Confirmar `apps/mobile/.env` com Supabase e API Railway.
+2. Rodar o typecheck:
+
+```powershell
+npm --workspace apps/mobile run typecheck
+```
+
+3. Entrar no Expo/EAS, se ainda não estiver logado:
+
+```powershell
+cd apps/mobile
+npx eas login
+```
+
+4. Configurar o projeto EAS, se pedir:
+
+```powershell
+npx eas build:configure
+```
+
+5. Gerar APK Android interno:
+
+```powershell
+npm run build:mobile:android
+```
+
+O perfil `preview` em `apps/mobile/eas.json` já está configurado para gerar APK.
