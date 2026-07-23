@@ -7,6 +7,8 @@
     "scheme": "nutricaofitness",
     "userInterfaceStyle": "light",
     "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
       "backgroundColor": "#f4f8fc"
     },
     "ios": {
@@ -22,6 +24,7 @@
         "CAMERA"
       ],
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0066ee"
       }
     },
@@ -32,6 +35,7 @@
           "cameraPermission": "Permita acessar a câmera para escanear códigos de barras dos alimentos."
         }
       ]
-    ]
+    ],
+    "icon": "./assets/icon.png"
   }
 }

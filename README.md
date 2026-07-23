@@ -77,3 +77,23 @@ npx eas build -p android --profile preview
 - Vercel hospeda `apps/web`.
 - Railway hospeda `services/api` e workers futuros.
 - Supabase fornece Postgres, Auth, Storage, Realtime e RLS.
+
+## Supabase: perfil e metas nutricionais
+
+Para ativar o salvamento do Perfil no Supabase, rode a migration:
+
+```sql
+-- arquivo: supabase/migrations/202607230001_nutrition_profiles.sql
+```
+
+No painel do Supabase:
+
+1. Abra o projeto.
+2. Vá em SQL Editor.
+3. Abra o arquivo `supabase/migrations/202607230001_nutrition_profiles.sql` no projeto.
+4. Copie todo o conteúdo.
+5. Cole no SQL Editor.
+6. Clique em Run.
+7. Em Table Editor, confirme a tabela `nutrition_profiles`.
+
+Depois disso, no app mobile, entre em Perfil e toque em `Salvar perfil no Supabase`.
