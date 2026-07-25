@@ -1521,6 +1521,68 @@ export default function Home() {
     setState(defaultState);
   }
 
+  if (!session) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", padding: "20px" }}>
+        <div className="card" style={{ maxWidth: "440px", width: "100%", padding: "32px", borderRadius: "24px", border: "1px solid var(--line)", background: "#fff", boxShadow: "0 10px 25px -5px rgba(0,0,0,0.05)" }}>
+          <div style={{ textAlign: "center", marginBottom: "24px" }}>
+            <div className="brand" style={{ justifyContent: "center", marginBottom: "12px", fontSize: "1.5rem" }}>
+              <span className="brand-mark"><Flame size={24} /></span> Nutrição & Fitness
+            </div>
+            <h2 style={{ fontSize: "1.6rem", fontWeight: "900", color: "var(--text)", marginBottom: "6px" }}>
+              {mode === "login" ? "Entrar no aplicativo" : "Criar sua conta"}
+            </h2>
+            <p className="muted" style={{ fontSize: "0.95rem" }}>
+              {mode === "login" 
+                ? "Informe seu e-mail e senha para acessar seu diário e metas de saúde." 
+                : "Cadastre-se para começar a registrar alimentos, refeições e jejum."}
+            </p>
+          </div>
+
+          <form onSubmit={submitAuth} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <label className="field" style={{ width: "100%" }}>
+              E-mail
+              <input
+                type="email"
+                value={authForm.email}
+                onChange={(event) => setAuthForm({ ...authForm, email: event.target.value })}
+                placeholder="seu.email@exemplo.com"
+                required
+                style={{ width: "100%", padding: "12px 16px", borderRadius: "12px" }}
+              />
+            </label>
+            <label className="field" style={{ width: "100%" }}>
+              Senha
+              <input
+                type="password"
+                value={authForm.password}
+                onChange={(event) => setAuthForm({ ...authForm, password: event.target.value })}
+                placeholder="Digite sua senha"
+                minLength={6}
+                required
+                style={{ width: "100%", padding: "12px 16px", borderRadius: "12px" }}
+              />
+            </label>
+
+            {message ? <p className="status-line" style={{ marginTop: "4px" }}>{message}</p> : null}
+
+            <button className="primary-action" type="submit" style={{ width: "100%", padding: "14px", fontSize: "1.05rem", fontWeight: "bold", borderRadius: "12px", marginTop: "8px" }}>
+              {mode === "login" ? "Entrar" : "Cadastrar"}
+            </button>
+            <button
+              className="secondary-action"
+              type="button"
+              onClick={() => setMode(mode === "login" ? "signup" : "login")}
+              style={{ width: "100%", padding: "12px", fontSize: "0.95rem", borderRadius: "12px" }}
+            >
+              {mode === "login" ? "Não tem uma conta? Cadastre-se" : "Já possui conta? Fazer login"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -1557,21 +1619,7 @@ export default function Home() {
           <p className="muted">Alimentos, água, exercícios e peso serão carregados e registrados para a data selecionada.</p>
         </section>
 
-        {!session ? (
-          <section className="auth-panel card">
-            <div>
-              <div className="card-title">Acesso</div>
-              <h2>{mode === "login" ? "Entrar na conta" : "Criar conta"}</h2>
-              <p className="muted">Use o e-mail habilitado no Supabase Auth. Para teste local, a confirmação de e-mail pode ficar desativada.</p>
-            </div>
-            <form className="auth-form" onSubmit={submitAuth}>
-              <input type="email" value={authForm.email} onChange={(event) => setAuthForm({ ...authForm, email: event.target.value })} placeholder="email@empresa.com" required />
-              <input type="password" value={authForm.password} onChange={(event) => setAuthForm({ ...authForm, password: event.target.value })} placeholder="Senha" minLength={6} required />
-              <button className="primary-action" type="submit">{mode === "login" ? "Entrar" : "Cadastrar"}</button>
-              <button className="secondary-action" type="button" onClick={() => setMode(mode === "login" ? "signup" : "login")}>{mode === "login" ? "Criar conta" : "Já tenho conta"}</button>
-            </form>
-          </section>
-        ) : null}
+
 
         {message ? <p className="status-line">{loadingRemote ? "Carregando: " : ""}{message}</p> : null}
 
