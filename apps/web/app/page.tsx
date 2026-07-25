@@ -360,6 +360,84 @@ export default function Home() {
   const [foodForm, setFoodForm] = useState({ meal: "lunch" as Meal, name: "", quantity: "100", unit: "g", calories: "", protein: "", carbs: "", fat: "" });
   const [entryMode, setEntryMode] = useState<"single_food" | "meal_composition">("single_food");
   const [mealCompositionItems, setMealCompositionItems] = useState<Array<Omit<FoodEntry, "id">>>([]);
+  const [mealName, setMealName] = useState("");
+
+  async function finishMealComposition() {
+    if (mealCompositionItems.length === 0) {
+      setMessage("Adicione pelo menos um alimento antes de concluir a refeição.");
+      return;
+    }
+    if (!mealName.trim()) {
+      setMessage("Informe um nome para a refeição (ex.: Almoço de domingo) antes de concluir.");
+      return;
+    }
+
+    const namedMealTitle = mealName.trim();
+    const currentMealType = foodForm.meal;
+
+    const savedMealPayload = {
+      name: namedMealTitle,
+      meal: currentMealType,
+      items: mealCompositionItems.map((item) => ({
+        meal: item.meal,
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit,
+        calories: item.calories,
+        protein: item.protein,
+        carbs: item.carbs,
+        fat: item.fat
+      }))
+    };
+
+    if (isCloud) {
+      const { data: savedData } = await supabase!.from("saved_meals").insert({
+        user_id: session!.user.id,
+        ...savedMealPayload
+      }).select("id,name,meal,items").single();
+
+      if (savedData) {
+        setSavedMeals((current) => [{ id: savedData.id, name: savedData.name, meal: savedData.meal as Meal, items: savedData.items as SavedMeal["items"] }, ...current]);
+      }
+    } else {
+      setSavedMeals((current) => [{ id: createId("saved"), name: savedMealPayload.name, meal: savedMealPayload.meal, items: savedMealPayload.items }, ...current]);
+    }
+
+    let entries: FoodEntry[] = mealCompositionItems.map((item) => ({ ...item, id: createId("food") }));
+    if (isCloud) {
+      const payload = entries.map((entry) => ({
+        user_id: session!.user.id,
+        diary_date: selectedDate,
+        meal: entry.meal,
+        quantity: entry.quantity,
+        unit: entry.unit,
+        food_name_snapshot: entry.name,
+        calories_kcal: entry.calories,
+        protein_g: entry.protein,
+        carbs_g: entry.carbs,
+        fat_g: entry.fat
+      }));
+      const { data, error } = await supabase!.from("diary_entries").insert(payload).select("id,meal,food_name_snapshot,quantity,unit,calories_kcal,protein_g,carbs_g,fat_g");
+      if (error) return setMessage(error.message);
+      if (data) {
+        entries = data.map((entry) => ({
+          id: entry.id,
+          meal: entry.meal as Meal,
+          name: entry.food_name_snapshot,
+          quantity: Number(entry.quantity),
+          unit: entry.unit,
+          calories: Number(entry.calories_kcal),
+          protein: Number(entry.protein_g),
+          carbs: Number(entry.carbs_g),
+          fat: Number(entry.fat_g)
+        }));
+      }
+    }
+    setState((current) => ({ ...current, foodEntries: [...current.foodEntries, ...entries] }));
+    setMealCompositionItems([]);
+    setMealName("");
+    setMessage(`Refeição "${namedMealTitle}" (${mealLabels[currentMealType]}) registrada no diário e salva em Refeições Salvas!`);
+  }
   const [activeFoodCategory, setActiveFoodCategory] = useState<FoodCategory | "all">("all");
   const [editingDiaryEntryId, setEditingDiaryEntryId] = useState<string | null>(null);
   const [diaryEditForm, setDiaryEditForm] = useState({ meal: "lunch" as Meal, name: "", quantity: "1", unit: "porção", calories: "", protein: "", carbs: "", fat: "" });
@@ -765,46 +843,6 @@ export default function Home() {
 
   function removeMealCompositionItem(index: number) {
     setMealCompositionItems((current) => current.filter((_, i) => i !== index));
-  }
-
-  async function finishMealComposition() {
-    if (mealCompositionItems.length === 0) {
-      setMessage("Adicione pelo menos um alimento antes de concluir a refeição.");
-      return;
-    }
-    let entries: FoodEntry[] = mealCompositionItems.map((item) => ({ ...item, id: createId("food") }));
-    if (isCloud) {
-      const payload = entries.map((entry) => ({
-        user_id: session!.user.id,
-        diary_date: selectedDate,
-        meal: entry.meal,
-        quantity: entry.quantity,
-        unit: entry.unit,
-        food_name_snapshot: entry.name,
-        calories_kcal: entry.calories,
-        protein_g: entry.protein,
-        carbs_g: entry.carbs,
-        fat_g: entry.fat
-      }));
-      const { data, error } = await supabase!.from("diary_entries").insert(payload).select("id,meal,food_name_snapshot,quantity,unit,calories_kcal,protein_g,carbs_g,fat_g");
-      if (error) return setMessage(error.message);
-      if (data) {
-        entries = data.map((entry) => ({
-          id: entry.id,
-          meal: entry.meal as Meal,
-          name: entry.food_name_snapshot,
-          quantity: Number(entry.quantity),
-          unit: entry.unit,
-          calories: Number(entry.calories_kcal),
-          protein: Number(entry.protein_g),
-          carbs: Number(entry.carbs_g),
-          fat: Number(entry.fat_g)
-        }));
-      }
-    }
-    setState((current) => ({ ...current, foodEntries: [...current.foodEntries, ...entries] }));
-    setMealCompositionItems([]);
-    setMessage(`Refeição (${mealLabels[foodForm.meal]}) concluída com sucesso!`);
   }
 
   function chooseRecentFood(entry: FoodEntry) {
@@ -1678,6 +1716,17 @@ export default function Home() {
                     {mealCompositionItems.reduce((s, i) => s + i.calories, 0)} kcal · P {Math.round(mealCompositionItems.reduce((s, i) => s + i.protein, 0) * 10) / 10}g · C {Math.round(mealCompositionItems.reduce((s, i) => s + i.carbs, 0) * 10) / 10}g · G {Math.round(mealCompositionItems.reduce((s, i) => s + i.fat, 0) * 10) / 10}g
                   </strong>
                 </div>
+                <label className="field wide" style={{ marginBottom: "12px" }}>
+                  <strong style={{ color: "#166534", display: "block", marginBottom: "4px" }}>
+                    Nome da refeição (obrigatório para concluir e salvar em Refeições Salvas):
+                  </strong>
+                  <input
+                    style={{ backgroundColor: "#fff", borderColor: "#86efac", fontWeight: "bold" }}
+                    value={mealName}
+                    onChange={(event) => setMealName(event.target.value)}
+                    placeholder="Ex.: Almoço de domingo, Marmita fit, Café pós-treino"
+                  />
+                </label>
                 <button
                   type="button"
                   className="primary-action"
@@ -1738,25 +1787,15 @@ export default function Home() {
               ) : (
                 <button className="primary-action" type="submit"><Plus size={18} /> Adicionar ao diário</button>
               )}
-              <button className="secondary-action" type="button" onClick={saveCustomFood}>Salvar na base</button>
             </form>
           </article>
 
 
           <article className="card span-12" id="saved-meals">
             <div className="card-title"><ClipboardList size={16} /> Refeições salvas</div>
-            <p className="muted">Modelos de refeições completas para aplicar em qualquer data.</p>
-            {!isCloud ? (
-              <p className="muted compact">Entre na conta para salvar modelos no Supabase.</p>
-            ) : (
-              <form className="saved-meal-form" onSubmit={createSavedMeal}>
-                <label className="field wide">Nome da refeição<input value={savedMealForm.name} onChange={(event) => setSavedMealForm({ ...savedMealForm, name: event.target.value })} placeholder="Ex.: Almoço marmita" /></label>
-                <label className="field">Refeição base<select value={savedMealForm.meal} onChange={(event) => setSavedMealForm({ ...savedMealForm, meal: event.target.value as Meal })}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                <button className="primary-action" type="submit">Criar refeição</button>
-              </form>
-            )}
+            <p className="muted">Refeições nomeadas ao concluir no diário ficam salvas aqui para você aplicar em qualquer momento com 1 clique.</p>
             {savedMeals.length === 0 ? (
-              <p className="muted compact">Use o botão Salvar refeição no Diário da data ou preencha o formulário acima para criar seu primeiro modelo.</p>
+              <p className="muted compact">Ao montar uma Refeição Completa acima e definir um nome, ela será salva automaticamente nesta lista.</p>
             ) : (
               <div className="food-base-list">
                 {savedMeals.map((item) => (
@@ -1786,51 +1825,6 @@ export default function Home() {
               </div>
             )}
           </article>
-
-          <article className="card span-12" id="my-foods">
-            <div className="card-title"><ClipboardList size={16} /> Minha base</div>
-            <p className="muted">Alimentos salvos por você no Supabase para reutilizar, editar ou excluir.</p>
-            {!isCloud ? (
-              <p className="muted compact">Entre na conta para gerenciar sua base pessoal.</p>
-            ) : myFoodOptions.length === 0 ? (
-              <p className="muted compact">Nenhum alimento salvo ainda. Busque um alimento, ajuste a quantidade e clique em Salvar na base.</p>
-            ) : (
-              <div className="food-base-list">
-                {myFoodOptions.map((item) => (
-                  <div className="food-base-item" key={item.id}>
-                    {editingFoodId === item.id ? (
-                      <form className="food-base-edit" onSubmit={updateFoodBase}>
-                        <label className="field wide">Nome<input value={foodBaseForm.name} onChange={(event) => setFoodBaseForm({ ...foodBaseForm, name: event.target.value })} /></label>
-                        <label className="field">Marca<input value={foodBaseForm.brand} onChange={(event) => setFoodBaseForm({ ...foodBaseForm, brand: event.target.value })} /></label>
-                        <label className="field">Porção<input type="number" step="0.1" value={foodBaseForm.servingSize} onChange={(event) => setFoodBaseForm({ ...foodBaseForm, servingSize: event.target.value })} /></label>
-                        <label className="field">Unidade<input value={foodBaseForm.unit} onChange={(event) => setFoodBaseForm({ ...foodBaseForm, unit: event.target.value })} /></label>
-                        <label className="field">Kcal<input type="number" step="0.1" value={foodBaseForm.calories} onChange={(event) => setFoodBaseForm({ ...foodBaseForm, calories: event.target.value })} /></label>
-                        <label className="field">Proteína<input type="number" step="0.1" value={foodBaseForm.protein} onChange={(event) => setFoodBaseForm({ ...foodBaseForm, protein: event.target.value })} /></label>
-                        <label className="field">Carbo.<input type="number" step="0.1" value={foodBaseForm.carbs} onChange={(event) => setFoodBaseForm({ ...foodBaseForm, carbs: event.target.value })} /></label>
-                        <label className="field">Gord.<input type="number" step="0.1" value={foodBaseForm.fat} onChange={(event) => setFoodBaseForm({ ...foodBaseForm, fat: event.target.value })} /></label>
-                        <button className="primary-action" type="submit">Salvar edição</button>
-                        <button className="secondary-action" type="button" onClick={cancelEditFood}>Cancelar</button>
-                      </form>
-                    ) : (
-                      <>
-                        <div>
-                          <div className="result-heading"><strong>{item.name}</strong><em>{foodSourceLabel(item.source)}</em></div>
-                          <p className="muted compact">{item.brand ? `${item.brand} · ` : ""}{item.calories} kcal/{item.servingSize ?? 100}{item.unit} · P {item.protein}g · C {item.carbs}g · G {item.fat}g</p>
-                        </div>
-                        <div className="food-base-actions">
-                          <button className="secondary-action" type="button" onClick={() => chooseFoodOption(item.id)}>Usar</button>
-                          <button className="secondary-action" type="button" onClick={() => startEditFood(item)}>Editar</button>
-                          <button className="icon-button" type="button" onClick={() => deleteFoodBase(item.id)} aria-label={`Excluir ${item.name}`}><Trash2 size={16} /></button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </article>
-          {isAdmin ? <article className="card span-12" id="admin-foods"><div className="card-title"><ShieldCheck size={16} /> Admin da base de alimentos</div><p className="muted">Cadastre alimentos globais que aparecem para todos os usuários. Use valores por porção, preferencialmente por 100g quando a unidade for grama.</p><form className="food-base-edit admin-food-form" onSubmit={saveAdminFood}><label className="field wide">Nome<input value={adminFoodForm.name} onChange={(event) => setAdminFoodForm({ ...adminFoodForm, name: event.target.value })} placeholder="Ex.: Pizza portuguesa" /></label><label className="field">Marca/Fonte<input value={adminFoodForm.brand} onChange={(event) => setAdminFoodForm({ ...adminFoodForm, brand: event.target.value })} /></label><label className="field">Porção<input type="number" step="0.1" value={adminFoodForm.servingSize} onChange={(event) => setAdminFoodForm({ ...adminFoodForm, servingSize: event.target.value })} /></label><label className="field">Unidade<input value={adminFoodForm.unit} onChange={(event) => setAdminFoodForm({ ...adminFoodForm, unit: event.target.value })} /></label><label className="field">Kcal<input type="number" step="0.1" value={adminFoodForm.calories} onChange={(event) => setAdminFoodForm({ ...adminFoodForm, calories: event.target.value })} /></label><label className="field">Proteína<input type="number" step="0.1" value={adminFoodForm.protein} onChange={(event) => setAdminFoodForm({ ...adminFoodForm, protein: event.target.value })} /></label><label className="field">Carbo.<input type="number" step="0.1" value={adminFoodForm.carbs} onChange={(event) => setAdminFoodForm({ ...adminFoodForm, carbs: event.target.value })} /></label><label className="field">Gord.<input type="number" step="0.1" value={adminFoodForm.fat} onChange={(event) => setAdminFoodForm({ ...adminFoodForm, fat: event.target.value })} /></label><button className="primary-action" type="submit"><Plus size={18} /> Adicionar global</button></form>{adminDuplicateFood ? <p className="duplicate-warning">Possível duplicado: {adminDuplicateFood.name} já existe na base global.</p> : null}<div className="admin-tools"><label className="field wide">Buscar global<input value={adminFoodSearch} onChange={(event) => setAdminFoodSearch(event.target.value)} placeholder="Filtrar por nome ou fonte" /></label><label className="field">Fonte<select value={adminSourceFilter} onChange={(event) => setAdminSourceFilter(event.target.value as "all" | FoodSource)}><option value="all">Todas</option><option value="base_comum">Base comum</option><option value="supabase">Supabase</option><option value="open_food_facts">Open Food Facts</option><option value="user">Usuário</option></select></label></div><div className="admin-summary"><strong>{filteredGlobalFoodOptions.length}</strong><span>de {globalFoodOptions.length} alimento(s) globais</span></div>{filteredGlobalFoodOptions.length ? <div className="food-base-list">{filteredGlobalFoodOptions.slice(0, 30).map((item) => <div className="food-base-item" key={item.id}>{editingAdminFoodId === item.id ? <form className="food-base-edit admin-food-form" onSubmit={updateAdminFood}><label className="field wide">Nome<input value={adminEditForm.name} onChange={(event) => setAdminEditForm({ ...adminEditForm, name: event.target.value })} /></label><label className="field">Marca/Fonte<input value={adminEditForm.brand} onChange={(event) => setAdminEditForm({ ...adminEditForm, brand: event.target.value })} /></label><label className="field">Porção<input type="number" step="0.1" value={adminEditForm.servingSize} onChange={(event) => setAdminEditForm({ ...adminEditForm, servingSize: event.target.value })} /></label><label className="field">Unidade<input value={adminEditForm.unit} onChange={(event) => setAdminEditForm({ ...adminEditForm, unit: event.target.value })} /></label><label className="field">Kcal<input type="number" step="0.1" value={adminEditForm.calories} onChange={(event) => setAdminEditForm({ ...adminEditForm, calories: event.target.value })} /></label><label className="field">Proteína<input type="number" step="0.1" value={adminEditForm.protein} onChange={(event) => setAdminEditForm({ ...adminEditForm, protein: event.target.value })} /></label><label className="field">Carbo.<input type="number" step="0.1" value={adminEditForm.carbs} onChange={(event) => setAdminEditForm({ ...adminEditForm, carbs: event.target.value })} /></label><label className="field">Gord.<input type="number" step="0.1" value={adminEditForm.fat} onChange={(event) => setAdminEditForm({ ...adminEditForm, fat: event.target.value })} /></label><button className="primary-action" type="submit">Salvar edição</button><button className="secondary-action" type="button" onClick={cancelEditAdminFood}>Cancelar</button></form> : <><div><div className="result-heading"><strong>{item.name}</strong><em>{foodSourceLabel(item.source)}</em></div><p className="muted compact">{item.brand ? `${item.brand} · ` : ""}{item.calories} kcal/{item.servingSize ?? 100}{item.unit} · P {item.protein}g · C {item.carbs}g · G {item.fat}g</p></div><div className="food-base-actions"><button className="secondary-action" type="button" onClick={() => chooseFoodOption(item.id)}>Usar</button><button className="secondary-action" type="button" onClick={() => startEditAdminFood(item)}>Editar</button><button className="icon-button" type="button" onClick={() => deleteAdminFood(item.id)} aria-label={`Excluir ${item.name}`}><Trash2 size={16} /></button></div></>}</div>)}</div> : null}</article> : null}
-          <article className="card span-12 marketing-card" id="marketing"><div className="card-title"><Megaphone size={16} /> Kit PWA e marketing</div><p className="muted">Instale como aplicativo pelo navegador e use as artes abaixo para divulgação.</p><div className="marketing-links"><a className="secondary-action" href="/manifest.webmanifest" target="_blank">Manifest PWA</a><a className="secondary-action" href="/marketing/app-marketing-banner.png" target="_blank">Banner horizontal</a><a className="secondary-action" href="/marketing/app-marketing-square.png" target="_blank">Post quadrado</a><a className="secondary-action" href="/marketing/app-marketing-story.png" target="_blank">Story vertical</a></div></article>
           <article className="card span-4"><div className="card-title"><Droplets size={16} /> Água</div><form className="inline-form" onSubmit={addWater}><input type="number" value={waterAmount} onChange={(event) => setWaterAmount(event.target.value)} /><button className="primary-action" type="submit">ml</button></form></article>
           <article className="card span-4"><div className="card-title"><Dumbbell size={16} /> Exercício</div><form className="stack-form" onSubmit={addExercise}><input value={exerciseForm.name} onChange={(event) => setExerciseForm({ ...exerciseForm, name: event.target.value })} placeholder="Ex.: musculação" /><div className="two-cols"><input type="number" value={exerciseForm.minutes} onChange={(event) => setExerciseForm({ ...exerciseForm, minutes: event.target.value })} placeholder="min" /><input type="number" value={exerciseForm.calories} onChange={(event) => setExerciseForm({ ...exerciseForm, calories: event.target.value })} placeholder="kcal" /></div><button className="primary-action" type="submit"><Plus size={18} /> Adicionar</button></form></article>
           <article className="card span-4" id="progress"><div className="card-title"><Scale size={16} /> Peso</div><form className="inline-form" onSubmit={addWeight}><input type="number" step="0.1" value={weightForm} onChange={(event) => setWeightForm(event.target.value)} placeholder="kg" /><button className="primary-action" type="submit">Salvar</button></form><p className="muted">Na data: {state.weightEntries.find((entry) => entry.date === selectedDate)?.weightKg ?? "-"} kg · Último: {state.weightEntries.at(-1)?.weightKg ?? "-"} kg</p></article>
