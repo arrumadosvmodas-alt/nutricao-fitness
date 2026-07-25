@@ -2165,3 +2165,14 @@ button:disabled {
     grid-column: 1 / -1;
   }
 }
+
+nextjs-portal,
+[data-nextjs-toast],
+[data-nextjs-dialog-overlay],
+[class*="nextjs"],
+nextjs-portal * {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
