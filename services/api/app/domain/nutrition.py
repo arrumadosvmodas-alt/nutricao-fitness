@@ -68,3 +68,19 @@ def calculate_targets(
         "fat_g": fat,
     }
 
+
+LIQUID_KEYWORDS = (
+    "leite", "suco", "agua", "água", "bebida", "refrigerante", "iogurte líquido",
+    "iogurte liquido", "cha", "chá", "cafe", "café", "vitamina", "soda", "caldo",
+    "sopa", "cola", "guarana", "guaraná", "cerveja", "vinho", "shake", "isotonico", "isotónico"
+)
+
+
+def detect_unit(name: str) -> str:
+    name_lower = name.lower()
+    for kw in LIQUID_KEYWORDS:
+        if kw in name_lower:
+            return "ml"
+    return "g"
+
+

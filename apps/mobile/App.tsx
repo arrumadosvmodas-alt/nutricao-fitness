@@ -1,4 +1,4 @@
-﻿import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { BarCodeScanner } from "expo-barcode-scanner";
 import { StatusBar } from "expo-status-bar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -37,6 +37,18 @@ const emptyFoodForm = { meal: "lunch" as Meal, name: "", quantity: "100", unit: 
 const defaultProfile: UserProfile = { name: "", sex: "female", age: "35", heightCm: "165", weightKg: "70", goalWeightKg: "65", goal: "lose", activity: "light", proteinPct: "25", carbsPct: "45", fatPct: "30", manualCalories: "" };
 const emptyState: StoredState = { foods: [], water: [], exercises: [], weights: [], fasting: [] };
 const supportEmail = "hslspe2@gmail.com";
+
+const LIQUID_KEYWORDS = [
+  "leite", "suco", "agua", "água", "bebida", "refrigerante", "iogurte líquido",
+  "iogurte liquido", "cha", "chá", "cafe", "café", "vitamina", "soda", "caldo",
+  "sopa", "cola", "guarana", "guaraná", "cerveja", "vinho", "shake", "isotonico", "isotónico"
+];
+
+function isLiquidFood(name: string): boolean {
+  const lower = name.toLowerCase();
+  return LIQUID_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
 
 function brDate(date: string) {
   const [year, month, day] = date.split("-");
@@ -114,6 +126,28 @@ function per100(value: number, quantity: number, unit: string) {
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
+function nutritionFromForm(form: typeof emptyFoodForm) {
+  const quantity = parseAmount(form.quantity) || 100;
+  const unit = form.unit.trim() || "g";
+  const factor = unit.toLowerCase() === "g" || unit.toLowerCase() === "ml" ? quantity / 100 : 1;
+  return {
+    quantity,
+    unit,
+    calories: Math.round(parseAmount(form.calories) * factor),
+    protein: Math.round(parseAmount(form.protein) * factor * 10) / 10,
+    carbs: Math.round(parseAmount(form.carbs) * factor * 10) / 10,
+    fat: Math.round(parseAmount(form.fat) * factor * 10) / 10
+  };
+}
+
+function per100(value: number, quantity: number, unit: string) {
+  const normalizedQuantity = quantity || 100;
+  const factor = unit.toLowerCase() === "g" || unit.toLowerCase() === "ml" ? normalizedQuantity / 100 : 1;
+  return factor ? value / factor : value;
+}
+
+export default function App() {
+  const [session, setSession] = useState<Session | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
   const [authForm, setAuthForm] = useState({ email: "", password: "" });
   const [screen, setScreen] = useState<Screen>("today");
@@ -121,6 +155,8 @@ export default function App() {
   const [store, setStore] = useState<StoredState>(emptyState);
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
   const [foodForm, setFoodForm] = useState(emptyFoodForm);
+  const [entryMode, setEntryMode] = useState<"single_food" | "meal_composition">("single_food");
+  const [mealCompositionItems, setMealCompositionItems] = useState<Array<Omit<FoodEntry, "id" | "date">>>([]);
   const [editingFoodId, setEditingFoodId] = useState<string | null>(null);
   const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([]);
   const [savedMealName, setSavedMealName] = useState("Minha refeição");
@@ -259,6 +295,11 @@ export default function App() {
   const recentFoods = useMemo(() => {
     const seen = new Set<string>();
     return [...store.foods].reverse().filter((entry) => {
+  const remaining = targets.calories - totals.calories + exerciseTotal;
+
+  const recentFoods = useMemo(() => {
+    const seen = new Set<string>();
+    return [...store.foods].reverse().filter((entry) => {
       const key = entry.name.toLowerCase();
       if (seen.has(key)) return false;
       seen.add(key);
@@ -274,110 +315,10 @@ export default function App() {
   }
 
   async function requestPasswordReset() {
-    if (!supabase) return Alert.alert("Configura\u00e7\u00e3o pendente", "Configure o Supabase no app mobile.");
+    if (!supabase) return Alert.alert("Configuração pendente", "Configure o Supabase no app mobile.");
     const email = authForm.email.trim();
-    if (!email) return Alert.alert("Esqueci a senha", "Digite seu e-mail antes de solicitar a recupera\u00e7\u00e3o.");
+    if (!email) return Alert.alert("Esqueci a senha", "Digite seu e-mail antes de solicitar a recuperação.");
     const { error } = await supabase.auth.resetPasswordForEmail(email);
-    Alert.alert("Esqueci a senha", error ? error.message : "Enviamos um link de altera\u00e7\u00e3o de senha para o e-mail informado.");
-  }
-
-  function applyApiFood(food: ApiFood) {
-    setScannedFood(food);
-    setScannedBarcode(food.code || "");
-    setFoodSearchDone(false);
-    setFoodForm({
-      ...emptyFoodForm,
-      name: food.brand ? `${food.name} - ${food.brand}` : food.name,
-      calories: String(Math.round(food.calories_kcal_100g || 0)),
-      protein: String(Math.round((food.protein_g_100g || 0) * 10) / 10),
-      carbs: String(Math.round((food.carbs_g_100g || 0) * 10) / 10),
-      fat: String(Math.round((food.fat_g_100g || 0) * 10) / 10)
-    });
-  }
-
-  async function doSearch() {
-    if (!query.trim()) return;
-    setSearching(true);
-    setFoodSearchDone(false);
-    setFoodSearchError("");
-    try {
-      const results = await searchFoods(query.trim());
-      setFoodOptions(results);
-      setFoodSearchDone(true);
-    } catch (error) {
-      setFoodOptions([]);
-      setFoodSearchDone(true);
-      setFoodSearchError(error instanceof Error ? error.message : "Não foi possível buscar agora.");
-    } finally {
-      setSearching(false);
-    }
-  }
-
-  async function handleBarcode(code: string) {
-    if (scanLocked) return;
-    setScanLocked(true);
-    try {
-      const food = await findFoodByBarcode(code);
-      if (!food) { setScannedFood(null); setScannedBarcode(code); setFoodForm({ ...emptyFoodForm, name: "", quantity: "100", unit: "g" }); setScreen("log"); Alert.alert("Produto não encontrado", "Código " + code + " lido. Preencha o alimento manualmente para registrar."); setScanLocked(false); return; }
-      applyApiFood(food);
-      setScreen("log");
-    } catch { setScannedBarcode(code); setScreen("log"); Alert.alert("Erro", "Não foi possível consultar o produto agora. Você pode cadastrar manualmente."); setScanLocked(false); }
-  }
-
-  async function openScanner() {
-    const permission = await BarCodeScanner.requestPermissionsAsync();
-    setScannerPermission(permission.status === "granted");
-    setScanLocked(false);
-    setScreen("scanner");
-  }
-
-  async function addFood() {
-    if (!foodForm.name.trim() || !foodForm.calories) return Alert.alert("Alimento", "Preencha nome e calorias.");
-    const calculated = nutritionFromForm(foodForm);
-    const entry: FoodEntry = {
-      id: editingFoodId ?? `${Date.now()}`, date: selectedDate, meal: foodForm.meal, name: foodForm.name.trim(), ...calculated
-    };
-    if (supabase && session) {
-      await ensureProfile();
-      if (editingFoodId) {
-        const { error } = await supabase.from("diary_entries").update({ meal: entry.meal, quantity: entry.quantity, unit: entry.unit, food_name_snapshot: entry.name, calories_kcal: entry.calories, protein_g: entry.protein, carbs_g: entry.carbs, fat_g: entry.fat }).eq("id", editingFoodId);
-        if (error) return Alert.alert("Sincronização", error.message);
-      } else {
-        const { data, error } = await supabase.from("diary_entries").insert({ user_id: session.user.id, diary_date: selectedDate, meal: entry.meal, quantity: entry.quantity, unit: entry.unit, food_name_snapshot: entry.name, calories_kcal: entry.calories, protein_g: entry.protein, carbs_g: entry.carbs, fat_g: entry.fat }).select("id").single();
-        if (error) return Alert.alert("Sincronização", error.message);
-        if (data?.id) entry.id = data.id;
-      }
-    }
-    setStore((current) => editingFoodId
-      ? ({ ...current, foods: current.foods.map((item) => item.id === editingFoodId ? entry : item) })
-      : ({ ...current, foods: [...current.foods, entry] })
-    );
-    setEditingFoodId(null); setScannedFood(null); setScannedBarcode(""); setFoodForm(emptyFoodForm); setScreen("today");
-  }
-
-  function startEditFood(entry: FoodEntry) {
-    setEditingFoodId(entry.id);
-    setScannedFood(null);
-    setScannedBarcode("");
-    setFoodForm({
-      meal: entry.meal,
-      name: entry.name,
-      quantity: String(entry.quantity),
-      unit: entry.unit,
-      calories: String(Math.round(per100(entry.calories, entry.quantity, entry.unit))),
-      protein: String(Math.round(per100(entry.protein, entry.quantity, entry.unit) * 10) / 10),
-      carbs: String(Math.round(per100(entry.carbs, entry.quantity, entry.unit) * 10) / 10),
-      fat: String(Math.round(per100(entry.fat, entry.quantity, entry.unit) * 10) / 10)
-    });
-    setScreen("log");
-  }
-
-  function cancelFoodEdit() {
-    setEditingFoodId(null);
-    setScannedFood(null);
-    setScannedBarcode("");
-    setFoodForm(emptyFoodForm);
-  }
 
   function applyFoodTemplate(food: FoodTemplate) {
     setEditingFoodId(null);
@@ -585,23 +526,6 @@ function DateSwitcher({ selectedDate, setSelectedDate }: { selectedDate: string;
   return <View style={styles.dateRow}><Pressable style={styles.smallButton} onPress={() => setSelectedDate(addDays(selectedDate, -1))}><Text style={styles.smallButtonText}>Dia anterior</Text></Pressable><TextInput style={[styles.input, styles.dateInput]} value={brDate(selectedDate)} onChangeText={(value) => setSelectedDate(parseBrDate(value))} placeholder="dd/mm/aaaa" /><Pressable style={styles.smallButton} onPress={() => setSelectedDate(addDays(selectedDate, 1))}><Text style={styles.smallButtonText}>Próximo</Text></Pressable></View>;
 }
 
-function TodayScreen({ totals, targets, remaining, waterTotal, exerciseTotal, latestWeight, entries, activeFast, setScreen, openScanner, removeFood, startEditFood, isSystemAdmin }: { totals: { calories: number; protein: number; carbs: number; fat: number }; targets: ReturnType<typeof calculateTargets>; remaining: number; waterTotal: number; exerciseTotal: number; latestWeight?: WeightEntry; entries: FoodEntry[]; activeFast?: FastingSession; setScreen: (screen: Screen) => void; openScanner: () => void; removeFood: (id: string) => void; startEditFood: (entry: FoodEntry) => void; isSystemAdmin: boolean }) {
-  const calorieTarget = targets.calories;
-  const consumedPercent = Math.min(100, Math.round((totals.calories / calorieTarget) * 100));
-  const waterLiters = waterTotal / 1000;
-  const lastEntries = entries.slice(-3).reverse();
-  return <View><VisualDashboard totals={totals} targets={targets} remaining={remaining} waterTotal={waterTotal} isSystemAdmin={isSystemAdmin} /><View style={styles.heroCard}><Text style={styles.heroLabel}>Resumo do dia</Text><Text style={styles.heroValue}>{numberText(Math.max(remaining, 0))} kcal restantes</Text><View style={styles.progressTrack}><View style={[styles.progressFill, { width: (String(consumedPercent) + "%") as any }]} /></View><Text style={styles.heroMeta}>{numberText(totals.calories)} de {calorieTarget} kcal consumidas</Text></View><View style={styles.quickGrid}><Pressable style={styles.quickTile} onPress={() => setScreen("log")}><Ionicons name="restaurant-outline" size={22} color="#0066ee" /><Text style={styles.quickTileText}>Alimento</Text></Pressable><Pressable style={styles.quickTile} onPress={openScanner}><Ionicons name="barcode-outline" size={22} color="#0066ee" /><Text style={styles.quickTileText}>Scanner</Text></Pressable><Pressable style={styles.quickTile} onPress={() => setScreen("fasting")}><Ionicons name="time-outline" size={22} color="#0066ee" /><Text style={styles.quickTileText}>Jejum</Text></Pressable><Pressable style={styles.quickTile} onPress={() => setScreen("progress")}><Ionicons name="water-outline" size={22} color="#0066ee" /><Text style={styles.quickTileText}>Água</Text></Pressable></View><View style={styles.grid}><Metric label="Consumidas" value={totals.calories} suffix="kcal" /><Metric label="Restantes" value={remaining} suffix="kcal" /><Metric label="Água" value={waterLiters} suffix="L" decimals={1} /><Metric label="Exercícios" value={exerciseTotal} suffix="kcal" /></View><View style={styles.grid}><Metric label="Proteína" value={totals.protein} suffix={`/ ${targets.protein}g`} decimals={1} /><Metric label="Carboidratos" value={totals.carbs} suffix={`/ ${targets.carbs}g`} decimals={1} /><Metric label="Gorduras" value={totals.fat} suffix={`/ ${targets.fat}g`} decimals={1} /><Metric label="Peso" value={latestWeight?.weightKg || 0} suffix="kg" decimals={1} /></View>{activeFast ? <View style={styles.infoCard}><Ionicons name="timer-outline" size={22} color="#0066ee" /><View style={styles.entryContent}><Text style={styles.entryName}>Jejum ativo</Text><Text style={styles.muted}>Iniciado em {new Date(activeFast.startedAt).toLocaleString("pt-BR")}</Text></View></View> : null}<View style={styles.card}><Text style={styles.cardTitle}>Últimos registros</Text>{lastEntries.length === 0 ? <Text style={styles.muted}>Nenhum alimento registrado nessa data.</Text> : null}{lastEntries.map((entry) => <View key={entry.id} style={styles.entryRow}><View style={styles.entryContent}><Text style={styles.entryName}>{entry.name}</Text><Text style={styles.muted}>{mealLabels[entry.meal]} ? {numberText(entry.quantity)}{entry.unit} ? P {entry.protein}g ? C {entry.carbs}g ? G {entry.fat}g</Text></View><View style={styles.entryRight}><Text style={styles.kcal}>{entry.calories} kcal</Text><Pressable onPress={() => startEditFood(entry)}><Text style={styles.editText}>Editar</Text></Pressable><Pressable onPress={() => removeFood(entry.id)}><Text style={styles.deleteText}>Excluir</Text></Pressable></View></View>)}{entries.length > 3 ? <Text style={styles.muted}>Mais {entries.length - 3} registro(s) no dia.</Text> : null}</View></View>;
-}
-
-function LogScreen({ foodForm, setFoodForm, scannedFood, scannedBarcode, addFood, editingFoodId, cancelFoodEdit, query, setQuery, foodOptions, searching, foodSearchDone, foodSearchError, doSearch, applyApiFood, recentFoods, favoriteFoods, applyFoodTemplate, toggleFavoriteFood, savedMeals, savedMealName, setSavedMealName, savedMealBase, setSavedMealBase, createSavedMealFromDay, applySavedMeal, deleteSavedMeal }: { foodForm: typeof emptyFoodForm; setFoodForm: Dispatch<SetStateAction<typeof emptyFoodForm>>; scannedFood: BarcodeFood | null; scannedBarcode: string; addFood: () => void; editingFoodId: string | null; cancelFoodEdit: () => void; query: string; setQuery: (value: string) => void; foodOptions: ApiFood[]; searching: boolean; foodSearchDone: boolean; foodSearchError: string; doSearch: () => void; applyApiFood: (food: ApiFood) => void; recentFoods: FoodTemplate[]; favoriteFoods: FoodTemplate[]; applyFoodTemplate: (food: FoodTemplate) => void; toggleFavoriteFood: (food: FoodTemplate) => void; savedMeals: SavedMeal[]; savedMealName: string; setSavedMealName: (value: string) => void; savedMealBase: Meal; setSavedMealBase: (meal: Meal) => void; createSavedMealFromDay: () => void; applySavedMeal: (meal: SavedMeal) => void; deleteSavedMeal: (id: string) => void }) {
-  const preview = nutritionFromForm(foodForm);
-  return <View><QuickFoodsPanel title="Favoritos" foods={favoriteFoods} emptyText="Nenhum favorito ainda. Favorite um alimento recente para aparecer aqui." favoriteFoods={favoriteFoods} applyFoodTemplate={applyFoodTemplate} toggleFavoriteFood={toggleFavoriteFood} /><QuickFoodsPanel title="Recentes" foods={recentFoods} emptyText="Seus alimentos registrados aparecem aqui para reutilizar rápido." favoriteFoods={favoriteFoods} applyFoodTemplate={applyFoodTemplate} toggleFavoriteFood={toggleFavoriteFood} /><SavedMealsPanel savedMeals={savedMeals} savedMealName={savedMealName} setSavedMealName={setSavedMealName} savedMealBase={savedMealBase} setSavedMealBase={setSavedMealBase} createSavedMealFromDay={createSavedMealFromDay} applySavedMeal={applySavedMeal} deleteSavedMeal={deleteSavedMeal} /><View style={styles.card}><Text style={styles.cardTitle}>Buscar alimento na base</Text><Text style={styles.muted}>Digite o alimento e toque em buscar. Depois use o botão verde para preencher o formulário.</Text><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Ex.: hambúrguer, pizza, arroz" value={query} onSubmitEditing={doSearch} onChangeText={setQuery} /><Pressable style={styles.squareButton} onPress={doSearch}><Ionicons name="search" size={22} color="#fff" /></Pressable></View>{searching ? <Text style={styles.muted}>Buscando...</Text> : null}{foodSearchError ? <Text style={styles.warning}>{foodSearchError}</Text> : null}{foodSearchDone && !searching && !foodSearchError && foodOptions.length === 0 ? <Text style={styles.warning}>Nenhum alimento encontrado. Tente outro nome, como “carne bovina”, “batata frita” ou “iogurte”.</Text> : null}{foodOptions.length ? <Text style={styles.resultCount}>{foodOptions.length} resultado(s) encontrado(s)</Text> : null}{foodOptions.map((food) => <View key={`${food.code || food.name}-${food.brand || ""}`} style={styles.foodResultCard}><View style={styles.entryContent}><Text style={styles.entryName}>{food.name}</Text><Text style={styles.muted}>{food.brand || "Base nutricional"} - {Math.round(food.calories_kcal_100g)} kcal/100g</Text><Text style={styles.macroLine}>P {numberText(food.protein_g_100g, 1)}g - C {numberText(food.carbs_g_100g, 1)}g - G {numberText(food.fat_g_100g, 1)}g</Text></View><Pressable style={styles.useFoodButton} onPress={() => applyApiFood(food)}><Text style={styles.useFoodButtonText}>Usar</Text></Pressable></View>)}</View><View style={styles.card}><Text style={styles.cardTitle}>{editingFoodId ? "Editar alimento" : "Registrar alimento"}</Text>{editingFoodId ? <Text style={styles.success}>Editando item do diário.</Text> : null}{scannedFood ? <Text style={styles.success}>Produto lido pelo código de barras.</Text> : null}{scannedBarcode && !scannedFood ? <Text style={styles.warning}>Código lido: {scannedBarcode}. Produto não encontrado; preencha os dados abaixo para registrar.</Text> : null}<MealPicker value={foodForm.meal} onChange={(meal) => setFoodForm((current) => ({ ...current, meal }))} /><TextInput style={styles.input} placeholder="Alimento" value={foodForm.name} onChangeText={(name) => setFoodForm((current) => ({ ...current, name }))} /><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Quantidade" keyboardType="numeric" value={foodForm.quantity} onChangeText={(quantity) => setFoodForm((current) => ({ ...current, quantity }))} /><TextInput style={[styles.input, styles.flex]} placeholder="Unidade" value={foodForm.unit} onChangeText={(unit) => setFoodForm((current) => ({ ...current, unit }))} /></View><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Kcal/100g" keyboardType="numeric" value={foodForm.calories} onChangeText={(calories) => setFoodForm((current) => ({ ...current, calories }))} /><TextInput style={[styles.input, styles.flex]} placeholder="Proteína" keyboardType="numeric" value={foodForm.protein} onChangeText={(protein) => setFoodForm((current) => ({ ...current, protein }))} /></View><View style={styles.row}><TextInput style={[styles.input, styles.flex]} placeholder="Carbo." keyboardType="numeric" value={foodForm.carbs} onChangeText={(carbs) => setFoodForm((current) => ({ ...current, carbs }))} /><TextInput style={[styles.input, styles.flex]} placeholder="Gord." keyboardType="numeric" value={foodForm.fat} onChangeText={(fat) => setFoodForm((current) => ({ ...current, fat }))} /></View><View style={styles.previewBox}><Text style={styles.previewTitle}>Prévia para {numberText(preview.quantity)}{preview.unit}</Text><Text style={styles.previewText}>{preview.calories} kcal - P {numberText(preview.protein, 1)}g - C {numberText(preview.carbs, 1)}g - G {numberText(preview.fat, 1)}g</Text></View><Pressable style={styles.primaryButton} onPress={addFood}><Text style={styles.primaryButtonText}>{editingFoodId ? "Salvar alterações" : "Adicionar ao diário"}</Text></Pressable>{editingFoodId ? <Pressable style={styles.secondaryButton} onPress={cancelFoodEdit}><Text style={styles.secondaryButtonText}>Cancelar edição</Text></Pressable> : null}</View></View>;
-}
-
-
-function QuickFoodsPanel({ title, foods, emptyText, favoriteFoods, applyFoodTemplate, toggleFavoriteFood }: { title: string; foods: FoodTemplate[]; emptyText: string; favoriteFoods: FoodTemplate[]; applyFoodTemplate: (food: FoodTemplate) => void; toggleFavoriteFood: (food: FoodTemplate) => void }) {
-  return <View style={styles.card}><Text style={styles.cardTitle}>{title}</Text>{foods.length === 0 ? <Text style={styles.muted}>{emptyText}</Text> : null}{foods.map((food) => {
-    const favorite = favoriteFoods.some((item) => item.name.toLowerCase() === food.name.toLowerCase());
     return <View key={food.name} style={styles.quickFoodRow}><View style={styles.entryContent}><Text style={styles.entryName}>{food.name}</Text><Text style={styles.muted}>{mealLabels[food.meal]} - {numberText(food.quantity)}{food.unit} - {food.calories} kcal</Text></View><View style={styles.quickActions}><Pressable style={styles.quickUseButton} onPress={() => applyFoodTemplate(food)}><Text style={styles.quickUseText}>Usar</Text></Pressable><Pressable style={styles.favoriteButton} onPress={() => toggleFavoriteFood(food)}><Ionicons name={favorite ? "star" : "star-outline"} size={19} color={favorite ? "#f59e0b" : "#64748b"} /></Pressable></View></View>;
   })}</View>;
 }

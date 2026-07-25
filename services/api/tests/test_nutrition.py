@@ -1,4 +1,4 @@
-﻿from decimal import Decimal
+from decimal import Decimal
 
 from app.domain.fasting import build_fasting_guidance
 from app.domain.nutrition import calculate_bmr, calculate_targets
@@ -44,3 +44,14 @@ def test_fasting_guidance_sets_intake_between_meals() -> None:
     assert result.break_fast_calories_max == 672
     assert result.protein_min_g == 28
     assert "agua" in result.allowed_during_fast
+
+
+def test_detect_unit_liquids_and_solids() -> None:
+    from app.domain.nutrition import detect_unit
+
+    assert detect_unit("Leite desnatado") == "ml"
+    assert detect_unit("Suco de laranja") == "ml"
+    assert detect_unit("Água mineral") == "ml"
+    assert detect_unit("Arroz branco") == "g"
+    assert detect_unit("Peito de frango") == "g"
+
